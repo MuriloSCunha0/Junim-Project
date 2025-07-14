@@ -5,6 +5,7 @@ Analisador avançado de projeto Delphi para geração de documentação detalhad
 import os
 import re
 import json
+import math
 from typing import Dict, List, Any, Optional, Tuple
 import logging
 from datetime import datetime
@@ -18,6 +19,7 @@ class LegacyProjectAnalyzer:
     
     def __init__(self):
         """Inicializa o analisador"""
+        self.version = "1.0.0"
         self.project_info = {}
         self.units_analysis = {}
         self.business_logic = {}
@@ -734,290 +736,104 @@ class LegacyProjectAnalyzer:
         
         return 1
 
-    def map_data_flows(self, units_analysis: Dict[str, Any]) -> Dict[str, Any]:
-        """Mapeia fluxos de dados do sistema"""
-        try:
-            data_flows = {
-                'database_flows': [],
-                'form_data_flows': [],
-                'inter_unit_flows': [],
-                'external_flows': []
+    def _extract_classes_detailed(self, content: str) -> List[Dict[str, Any]]:
+        """Extrai classes com análise detalhada"""
+        classes = []
+        
+        # Pattern para classes Delphi
+        class_pattern = re.compile(r'(\w+)\s*=\s*class\s*\(([^)]*)\)', re.IGNORECASE)
+        
+        for match in class_pattern.finditer(content):
+            class_name = match.group(1)
+            parent_class = match.group(2).strip() if match.group(2) else None
+            
+            class_info = {
+                'name': class_name,
+                'parent_class': parent_class,
+                'purpose': self._infer_class_purpose(class_name, parent_class),
+                'visibility_sections': self._extract_visibility_sections(content, class_name),
+                'methods': self._extract_class_methods_detailed(content, class_name),
+                'properties': self._extract_class_properties(content, class_name),
+                'fields': self._extract_class_fields(content, class_name),
+                'events': self._extract_class_events(content, class_name)
             }
             
-            # Mapeia fluxos de banco de dados
-            for unit_name, unit_data in units_analysis.items():
-                db_operations = unit_data.get('database_operations', [])
-                
-                if db_operations:
-                    for db_op in db_operations:
-                        data_flows['database_flows'].append({
-                            'source_unit': unit_name,
-                            'operation_type': db_op.get('type', 'unknown'),
-                            'tables_involved': ['To be identified'],
-                            'data_direction': 'bidirectional',
-                            'description': db_op.get('description', 'Database operation')
-                        })
-            
-            # Mapeia fluxos entre formulários
-            for unit_name, unit_data in units_analysis.items():
-                if unit_data.get('unit_type') == 'form':
-                    uses_units = unit_data.get('uses_units', [])
-                    
-                    for used_unit in uses_units:
-                        if used_unit in units_analysis:
-                            if units_analysis[used_unit].get('unit_type') == 'form':
-                                data_flows['form_data_flows'].append({
-                                    'source': unit_name,
-                                    'target': used_unit,
-                                    'data_type': 'Form communication',
-                                    'method': 'Direct reference'
-                                })
-            
-            # Mapeia fluxos entre units
-            for unit_name, unit_data in units_analysis.items():
-                uses_units = unit_data.get('uses_units', [])
-                
-                for used_unit in uses_units:
-                    if used_unit in units_analysis:
-                        data_flows['inter_unit_flows'].append({
-                            'source_unit': unit_name,
-                            'target_unit': used_unit,
-                            'interface': 'Uses clause',
-                            'data_description': 'Unit dependency'
-                        })
-            
-            return data_flows
-            
-        except Exception as e:
-            logger.error(f"Erro ao mapear fluxos de dados: {str(e)}")
-            return {'error': str(e)}
-
-    def extract_requirements(self, units_analysis: Dict[str, Any], project_info: Dict[str, Any]) -> Dict[str, Any]:
-        """Extrai requisitos do sistema baseado na análise"""
-        try:
-            requirements = {
-                'functional_requirements': [],
-                'non_functional_requirements': [],
-                'business_requirements': [],
-                'technical_requirements': []
-            }
-            
-            # Extrai requisitos funcionais baseados em procedures
-            for unit_name, unit_data in units_analysis.items():
-                procedures = unit_data.get('procedures_functions', [])
-                
-                for proc in procedures:
-                    purpose = proc.get('purpose', '')
-                    
-                    if 'User Interface' in purpose:
-                        requirements['functional_requirements'].append({
-                            'title': f"User Interface - {proc.get('name')}",
-                            'module': unit_name,
-                            'description': f"System shall provide {proc.get('name')} functionality",
-                            'priority': 'High'
-                        })
-                    
-                    elif 'Data' in purpose:
-                        requirements['functional_requirements'].append({
-                            'title': f"Data Management - {proc.get('name')}",
-                            'module': unit_name,
-                            'description': f"System shall handle {purpose.lower()}",
-                            'priority': 'High'
-                        })
-            
-            # Requisitos não funcionais
-            requirements['non_functional_requirements'] = [
-                {
-                    'title': 'Performance',
-                    'category': 'Performance',
-                    'description': 'System response time should be under 2 seconds',
-                    'acceptance_criteria': 'All operations complete within 2 seconds'
-                },
-                {
-                    'title': 'Maintainability',
-                    'category': 'Maintainability',
-                    'description': 'Code should be modular and well-documented',
-                    'acceptance_criteria': 'All modules follow Spring Boot best practices'
-                },
-                {
-                    'title': 'Compatibility',
-                    'category': 'Compatibility',
-                    'description': 'System should work with existing database',
-                    'acceptance_criteria': 'Zero data loss during migration'
-                }
-            ]
-            
-            # Requisitos técnicos
-            requirements['technical_requirements'] = [
-                {
-                    'title': 'Java Spring Boot Framework',
-                    'technology': 'Java/Spring',
-                    'description': 'Use Spring Boot for backend development',
-                    'impact': 'Modern, maintainable architecture'
-                },
-                {
-                    'title': 'Database Compatibility',
-                    'technology': 'Database',
-                    'description': 'Maintain compatibility with existing database',
-                    'impact': 'Preserve existing data and relationships'
-                },
-                {
-                    'title': 'REST API Design',
-                    'technology': 'API',
-                    'description': 'Expose functionality through REST APIs',
-                    'impact': 'Enable future integrations and frontend options'
-                }
-            ]
-            
-            return requirements
-            
-        except Exception as e:
-            logger.error(f"Erro ao extrair requisitos: {str(e)}")
-            return {'error': str(e)}
-
-    def extract_business_logic(self, units_analysis: Dict[str, Any]) -> Dict[str, Any]:
-        """Extrai lógica de negócio identificada no código"""
-        try:
-            business_logic = {
-                'business_rules': [],
-                'validations': [],
-                'calculations': [],
-                'workflows': []
-            }
-            
-            for unit_name, unit_data in units_analysis.items():
-                procedures = unit_data.get('procedures_functions', [])
-                
-                for proc in procedures:
-                    proc_name = proc.get('name', '')
-                    purpose = proc.get('purpose', '')
-                    
-                    # Identifica validações
-                    if 'validate' in proc_name.lower() or 'check' in proc_name.lower():
-                        business_logic['validations'].append({
-                            'function': proc_name,
-                            'unit': unit_name,
-                            'description': f"Validation logic: {purpose}"
-                        })
-                    
-                    # Identifica cálculos
-                    elif 'calculate' in proc_name.lower() or 'compute' in proc_name.lower():
-                        business_logic['calculations'].append({
-                            'name': proc_name,
-                            'unit': unit_name,
-                            'type': 'Calculation',
-                            'description': f"Business calculation: {purpose}"
-                        })
-                    
-                    # Identifica regras de negócio gerais
-                    elif purpose in ['Business Logic Service', 'Data Validation']:
-                        business_logic['business_rules'].append({
-                            'unit': unit_name,
-                            'rule': f"Business rule implemented in {proc_name}",
-                            'description': purpose
-                        })
-            
-            return business_logic
-            
-        except Exception as e:
-            logger.error(f"Erro ao extrair lógica de negócio: {str(e)}")
-            return {'error': str(e)}
-
-    def generate_delphi_java_correlations(self, analysis_data: Dict[str, Any]) -> Dict[str, Any]:
-        """Gera correlações entre componentes Delphi e Java Spring equivalentes"""
-        try:
-            correlations = {
-                'component_mappings': [],
-                'pattern_mappings': [],
-                'technology_mappings': []
-            }
-            
-            units_analysis = analysis_data.get('units_analysis', {})
-            
-            # Mapeamentos de componentes
-            for unit_name, unit_data in units_analysis.items():
-                unit_type = unit_data.get('unit_type', 'unknown')
-                
-                if unit_type == 'form':
-                    correlations['component_mappings'].append({
-                        'delphi_component': f"TForm ({unit_name})",
-                        'delphi_description': "Form with UI controls and event handlers",
-                        'java_equivalent': "@RestController + @Service",
-                        'rationale': "Separate UI logic (REST endpoints) from business logic (Service)",
-                        'java_example': f"""@RestController
-@RequestMapping("/api/{unit_name.lower()}")
-public class {unit_name}Controller {{
-    @Autowired
-    private {unit_name}Service service;
+            classes.append(class_info)
+        
+        return classes
     
-    @GetMapping
-    public ResponseEntity<List<Object>> getData() {{
-        return ResponseEntity.ok(service.getData());
-    }}
-}}"""
-                    })
-                
-                elif unit_type == 'datamodule':
-                    correlations['component_mappings'].append({
-                        'delphi_component': f"TDataModule ({unit_name})",
-                        'delphi_description': "Data access module with queries and connections",
-                        'java_equivalent': "@Repository + @Entity",
-                        'rationale': "Use JPA Repository pattern for data access",
-                        'java_example': f"""@Repository
-public interface {unit_name}Repository extends JpaRepository<{unit_name}Entity, Long> {{
-    List<{unit_name}Entity> findByActiveTrue();
+    def _extract_procedures_functions_detailed(self, content: str) -> List[Dict[str, Any]]:
+        """Extrai procedures e functions com análise detalhada"""
+        procedures = []
+        
+        # Patterns para procedures e functions
+        proc_pattern = re.compile(
+            r'(procedure|function)\s+(\w+)\s*(\([^)]*\))?\s*(?::\s*(\w+))?\s*;',
+            re.IGNORECASE
+        )
+        
+        for match in proc_pattern.finditer(content):
+            proc_type = match.group(1).lower()
+            proc_name = match.group(2)
+            parameters = match.group(3) if match.group(3) else ""
+            return_type = match.group(4) if match.group(4) else None
+            
+            # Extrai corpo da procedure/function
+            proc_body = self._extract_procedure_body(content, proc_name)
+            
+            proc_info = {
+                'name': proc_name,
+                'type': proc_type,
+                'parameters': self._parse_parameters(parameters),
+                'return_type': return_type,
+                'body': proc_body,
+                'complexity_metrics': {
+                    'cyclomatic_complexity': self._calculate_function_complexity(proc_body)
+                },
+                'function_calls': self._extract_function_calls(proc_body),
+                'purpose': self._infer_function_purpose(proc_name, proc_body),
+                'description': f"{proc_type.title()} {proc_name}"
+            }
+            
+            procedures.append(proc_info)
+        
+        return procedures
     
-    @Query("SELECT e FROM {unit_name}Entity e WHERE e.status = :status")
-    List<{unit_name}Entity> findByStatus(@Param("status") String status);
-}}"""
-                    })
+    def _calculate_complexity_metrics(self, content: str) -> Dict[str, Any]:
+        """Calcula métricas de complexidade detalhadas"""
+        lines = content.splitlines()
+        
+        metrics = {
+            'lines_of_code': len([line for line in lines if line.strip() and not line.strip().startswith('//')]),
+            'cyclomatic_complexity': self._calculate_cyclomatic_complexity(content),
+            'function_count': len(re.findall(r'(procedure|function)\s+\w+', content, re.IGNORECASE)),
+            'class_count': len(re.findall(r'\w+\s*=\s*class\s*\(', content, re.IGNORECASE)),
+            'nesting_depth': self._calculate_max_nesting_depth(content),
+            'comment_ratio': self._calculate_comment_ratio(content),
+            'maintainability_index': self._calculate_maintainability_index(content)
+        }
+        
+        return metrics
+    
+    def _calculate_maintainability_index(self, content: str) -> float:
+        """Calcula índice de manutenibilidade simplificado"""
+        try:
+            loc = len([line for line in content.splitlines() if line.strip()])
+            complexity = self._calculate_cyclomatic_complexity(content)
+            comment_ratio = self._calculate_comment_ratio(content)
             
-            # Mapeamentos de padrões
-            correlations['pattern_mappings'] = [
-                {
-                    'delphi_pattern': 'Event-Driven Programming',
-                    'delphi_description': 'Button clicks and form events trigger procedures',
-                    'java_pattern': 'REST API + Event Listeners',
-                    'advantages': 'Decoupled, testable, scalable architecture'
-                },
-                {
-                    'delphi_pattern': 'Data Module Pattern',
-                    'delphi_description': 'Centralized data access in TDataModule',
-                    'java_pattern': 'Repository Pattern + Service Layer',
-                    'advantages': 'Clean separation of concerns, dependency injection'
-                }
-            ]
+            # Fórmula simplificada do índice de manutenibilidade
+            if loc == 0:
+                return 0.0
             
-            # Mapeamentos de tecnologias
-            correlations['technology_mappings'] = [
-                {
-                    'delphi_tech': 'VCL Forms',
-                    'java_tech': 'REST API + Modern Frontend',
-                    'reason': 'Web-based UI is more flexible and maintainable'
-                },
-                {
-                    'delphi_tech': 'ADO/DBExpress',
-                    'java_tech': 'Spring Data JPA',
-                    'reason': 'ORM approach simplifies database operations'
-                },
-                {
-                    'delphi_tech': 'Exception Handling',
-                    'java_tech': '@ExceptionHandler + Custom Exceptions',
-                    'reason': 'Centralized, consistent error handling'
-                }
-            ]
+            volume = loc * 4.32  # Estimativa de volume de Halstead simplificada
+            maintainability = max(0, (171 - 5.2 * math.log(volume) - 0.23 * complexity - 16.2 * math.log(loc) + 50 * math.sin(math.sqrt(2.4 * comment_ratio))) / 171)
             
-            return correlations
+            return round(maintainability, 2)
             
-        except Exception as e:
-            logger.error(f"Erro ao gerar correlações: {str(e)}")
-            return {'error': str(e)}
-
-    @property
-    def version(self) -> str:
-        """Retorna a versão do analisador"""
-        return "1.0.0"
-
+        except:
+            return 0.5  # Valor padrão
+    
     # Placeholder para métodos adicionais que serão implementados conforme necessário
     def _extract_dependencies(self, content: str) -> List[str]: return []
     def _extract_variables(self, content: str) -> List[Dict]: return []
@@ -1204,3 +1020,303 @@ public interface {unit_name}Repository extends JpaRepository<{unit_name}Entity, 
         except Exception as e:
             logger.error(f"Erro ao identificar fluxos de execução: {str(e)}")
             return {'error': str(e)}
+
+    def map_data_flows(self, units_analysis: Dict[str, Any]) -> Dict[str, Any]:
+        """Mapeia fluxos de dados do sistema"""
+        try:
+            data_flows = {
+                'database_flows': [],
+                'form_data_flows': [],
+                'component_interactions': [],
+                'data_transformations': []
+            }
+            
+            # Analisa fluxos de banco de dados
+            for unit_name, unit_data in units_analysis.items():
+                if unit_data.get('unit_type') == 'datamodule':
+                    datasets = unit_data.get('datasets', [])
+                    
+                    for dataset in datasets:
+                        data_flows['database_flows'].append({
+                            'source': 'Database',
+                            'target': unit_name,
+                            'dataset': dataset.get('name'),
+                            'table': dataset.get('table_name', 'Unknown'),
+                            'operations': dataset.get('operations', [])
+                        })
+            
+            # Analisa fluxos entre formulários
+            for unit_name, unit_data in units_analysis.items():
+                if unit_data.get('unit_type') == 'form':
+                    # Verifica campos de dados
+                    components = unit_data.get('components', [])
+                    
+                    for component in components:
+                        if component.get('type') in ['TEdit', 'TDBEdit', 'TMemo', 'TDBMemo']:
+                            data_flows['form_data_flows'].append({
+                                'form': unit_name,
+                                'component': component.get('name'),
+                                'type': component.get('type'),
+                                'data_binding': component.get('datasource', None),
+                                'flow_type': 'User Input'
+                            })
+                    
+                    # Verifica procedimentos que manipulam dados
+                    procedures = unit_data.get('procedures_functions', [])
+                    
+                    for proc in procedures:
+                        proc_name = proc.get('name', '').lower()
+                        
+                        if any(keyword in proc_name for keyword in ['save', 'insert', 'update', 'delete']):
+                            data_flows['data_transformations'].append({
+                                'operation': proc.get('name'),
+                                'unit': unit_name,
+                                'type': 'Data Modification',
+                                'description': f"Data operation in {unit_name}"
+                            })
+            
+            # Analisa interações entre componentes
+            for unit_name, unit_data in units_analysis.items():
+                components = unit_data.get('components', [])
+                
+                for component in components:
+                    if component.get('type') in ['TDataSource', 'TQuery', 'TTable']:
+                        data_flows['component_interactions'].append({
+                            'component': component.get('name'),
+                            'type': component.get('type'),
+                            'unit': unit_name,
+                            'connections': component.get('properties', {}).get('connected_to', [])
+                        })
+            
+            return data_flows
+            
+        except Exception as e:
+            logger.error(f"Erro ao mapear fluxos de dados: {str(e)}")
+            return {'error': str(e)}
+
+    def extract_requirements(self, units_analysis: Dict[str, Any], project_info: Dict[str, Any]) -> Dict[str, Any]:
+        """Extrai requisitos funcionais e não funcionais do sistema"""
+        try:
+            requirements = {
+                'functional_requirements': [],
+                'non_functional_requirements': [],
+                'business_rules': [],
+                'data_requirements': [],
+                'interface_requirements': []
+            }
+            
+            # Extrai requisitos funcionais baseados em formulários e operações
+            for unit_name, unit_data in units_analysis.items():
+                if unit_data.get('unit_type') == 'form':
+                    # Requisitos baseados em formulários
+                    form_caption = unit_data.get('caption', unit_name)
+                    requirements['functional_requirements'].append({
+                        'id': f"RF-{len(requirements['functional_requirements']) + 1:03d}",
+                        'description': f"O sistema deve fornecer interface para {form_caption}",
+                        'source': unit_name,
+                        'type': 'User Interface',
+                        'priority': 'High'
+                    })
+                    
+                    # Requisitos baseados em componentes do formulário
+                    components = unit_data.get('components', [])
+                    for component in components:
+                        comp_type = component.get('type', '')
+                        
+                        if comp_type in ['TDBGrid', 'TStringGrid']:
+                            requirements['functional_requirements'].append({
+                                'id': f"RF-{len(requirements['functional_requirements']) + 1:03d}",
+                                'description': f"O sistema deve permitir visualização de dados em formato tabular",
+                                'source': f"{unit_name}.{component.get('name')}",
+                                'type': 'Data Display',
+                                'priority': 'Medium'
+                            })
+                        
+                        elif comp_type in ['TButton']:
+                            button_name = component.get('name', '').lower()
+                            if 'save' in button_name or 'salvar' in button_name:
+                                requirements['functional_requirements'].append({
+                                    'id': f"RF-{len(requirements['functional_requirements']) + 1:03d}",
+                                    'description': f"O sistema deve permitir salvar dados",
+                                    'source': f"{unit_name}.{component.get('name')}",
+                                    'type': 'Data Persistence',
+                                    'priority': 'High'
+                                })
+                
+                elif unit_data.get('unit_type') == 'datamodule':
+                    # Requisitos de dados baseados em datasets
+                    datasets = unit_data.get('datasets', [])
+                    for dataset in datasets:
+                        table_name = dataset.get('table_name', 'Unknown')
+                        requirements['data_requirements'].append({
+                            'id': f"RD-{len(requirements['data_requirements']) + 1:03d}",
+                            'description': f"O sistema deve gerenciar dados da entidade {table_name}",
+                            'source': f"{unit_name}.{dataset.get('name')}",
+                            'entity': table_name,
+                            'operations': dataset.get('operations', [])
+                        })
+            
+            # Extrai regras de negócio baseadas em validações
+            for unit_name, unit_data in units_analysis.items():
+                procedures = unit_data.get('procedures_functions', [])
+                
+                for proc in procedures:
+                    proc_name = proc.get('name', '').lower()
+                    
+                    if 'validat' in proc_name or 'verif' in proc_name:
+                        requirements['business_rules'].append({
+                            'id': f"RN-{len(requirements['business_rules']) + 1:03d}",
+                            'description': f"Validação de negócio: {proc.get('name')}",
+                            'source': f"{unit_name}.{proc.get('name')}",
+                            'type': 'Validation Rule',
+                            'complexity': proc.get('complexity_metrics', {}).get('cyclomatic_complexity', 1)
+                        })
+            
+            # Requisitos não funcionais baseados na análise do projeto
+            total_files = project_info.get('total_files', 0)
+            
+            requirements['non_functional_requirements'] = [
+                {
+                    'id': 'RNF-001',
+                    'category': 'Performance',
+                    'description': 'O sistema deve responder às solicitações em menos de 3 segundos',
+                    'metric': 'Response Time < 3s',
+                    'priority': 'High'
+                },
+                {
+                    'id': 'RNF-002',
+                    'category': 'Scalability',
+                    'description': f'O sistema deve suportar expansão baseada em {total_files} módulos originais',
+                    'metric': f'Modular architecture for {total_files} modules',
+                    'priority': 'Medium'
+                },
+                {
+                    'id': 'RNF-003',
+                    'category': 'Maintainability',
+                    'description': 'O código deve seguir padrões Spring Boot para facilitar manutenção',
+                    'metric': 'Spring Boot best practices compliance',
+                    'priority': 'High'
+                },
+                {
+                    'id': 'RNF-004',
+                    'category': 'Security',
+                    'description': 'O sistema deve implementar autenticação e autorização',
+                    'metric': 'Spring Security implementation',
+                    'priority': 'High'
+                }
+            ]
+            
+            # Requisitos de interface baseados nos formulários
+            form_count = sum(1 for unit in units_analysis.values() if unit.get('unit_type') == 'form')
+            
+            requirements['interface_requirements'] = [
+                {
+                    'id': 'RI-001',
+                    'description': f'Interface web responsiva para {form_count} telas principais',
+                    'technology': 'Spring MVC + Thymeleaf ou REST API',
+                    'forms_count': form_count
+                },
+                {
+                    'id': 'RI-002',
+                    'description': 'Interface deve manter funcionalidades equivalentes ao sistema original',
+                    'compatibility': 'Functional equivalent to Delphi forms'
+                }
+            ]
+            
+            return requirements
+            
+        except Exception as e:
+            logger.error(f"Erro ao extrair requisitos: {str(e)}")
+            return {'error': str(e)}
+
+    def _find_delphi_files(self, project_path: str) -> Dict[str, List[str]]:
+        """Encontra todos os arquivos Delphi no projeto"""
+        delphi_files = {
+            'pas': [],  # Pascal units
+            'dfm': [],  # Form files
+            'dpr': [],  # Project files
+            'dpk': [],  # Package files
+            'inc': []   # Include files
+        }
+        
+        try:
+            for root, dirs, files in os.walk(project_path):
+                for file in files:
+                    file_path = os.path.join(root, file)
+                    file_ext = os.path.splitext(file)[1].lower()
+                    
+                    if file_ext == '.pas':
+                        delphi_files['pas'].append(file_path)
+                    elif file_ext == '.dfm':
+                        delphi_files['dfm'].append(file_path)
+                    elif file_ext == '.dpr':
+                        delphi_files['dpr'].append(file_path)
+                    elif file_ext == '.dpk':
+                        delphi_files['dpk'].append(file_path)
+                    elif file_ext == '.inc':
+                        delphi_files['inc'].append(file_path)
+            
+            logger.info(f"Arquivos encontrados: {sum(len(files) for files in delphi_files.values())} total")
+            return delphi_files
+            
+        except Exception as e:
+            logger.error(f"Erro ao encontrar arquivos Delphi: {str(e)}")
+            return delphi_files
+    
+    def _read_file_safe(self, file_path: str) -> str:
+        """Lê arquivo de forma segura com tratamento de encoding"""
+        try:
+            with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
+                return f.read()
+        except Exception as e:
+            logger.warning(f"Erro ao ler arquivo {file_path}: {str(e)}")
+            try:
+                with open(file_path, 'r', encoding='latin-1', errors='ignore') as f:
+                    return f.read()
+            except:
+                return ""
+    
+    def _classify_unit_type(self, content: str, unit_name: str) -> str:
+        """Classifica o tipo da unit baseado no conteúdo"""
+        content_lower = content.lower()
+        unit_name_lower = unit_name.lower()
+        
+        if 'tform' in content_lower or 'inherited' in content_lower:
+            return 'form'
+        elif 'tdatamodule' in content_lower or 'datamodule' in content_lower:
+            return 'datamodule'
+        elif 'service' in unit_name_lower or 'manager' in unit_name_lower:
+            return 'service'
+        elif 'util' in unit_name_lower or 'helper' in unit_name_lower:
+            return 'utility'
+        elif 'class(' in content_lower or 'class ' in content_lower:
+            return 'class'
+        elif 'interface' in content_lower and 'implementation' in content_lower:
+            return 'unit'
+        else:
+            return 'unknown'
+
+    def extract_business_logic(self, units_analysis: Dict[str, Any]) -> Dict[str, Any]:
+        """Método público para extrair lógica de negócio"""
+        try:
+            # Atualiza análise interna
+            self.units_analysis = units_analysis
+            # Chama método privado
+            return self._extract_business_logic()
+        except Exception as e:
+            logger.error(f"Erro ao extrair lógica de negócio: {str(e)}")
+            return {'error': str(e)}
+
+    def generate_delphi_java_correlations(self, analysis_results: Dict[str, Any]) -> Dict[str, Any]:
+        """Método público para gerar correlações Delphi→Java"""
+        try:
+            # Atualiza análise interna
+            self.units_analysis = analysis_results.get('units_analysis', {})
+            self.project_info = analysis_results.get('project_info', {})
+            # Chama método privado
+            return self._generate_correlations()
+        except Exception as e:
+            logger.error(f"Erro ao gerar correlações: {str(e)}")
+            return {'error': str(e)}
+
+    # ...existing code...

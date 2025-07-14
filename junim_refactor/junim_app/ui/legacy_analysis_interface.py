@@ -11,8 +11,21 @@ from typing import Dict, Any, List
 import logging
 from datetime import datetime
 
-from core.legacy_project_analyzer import LegacyProjectAnalyzer
-from core.documentation_generator import DocumentationGenerator
+# Imports absolutos para evitar problemas
+import sys
+from pathlib import Path
+
+# Adiciona diretório pai ao path
+current_dir = Path(__file__).parent
+parent_dir = current_dir.parent
+sys.path.append(str(parent_dir))
+
+try:
+    from core.legacy_project_analyzer import LegacyProjectAnalyzer
+    from core.documentation_generator import DocumentationGenerator
+except ImportError as e:
+    st.error(f"Erro ao importar módulos: {e}")
+    st.stop()
 
 # Configuração do logging
 logging.basicConfig(level=logging.INFO)

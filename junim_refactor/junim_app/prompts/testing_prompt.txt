@@ -1,0 +1,123 @@
+# Prompt para geração de testes unitários
+
+## OBJETIVO
+Criar suite completa de testes para garantir qualidade do código convertido.
+
+## TESTES DE CONTROLLER
+```java
+@WebMvcTest(EntityController.class)
+class EntityControllerTest {
+    
+    @Autowired
+    private MockMvc mockMvc;
+    
+    @MockBean
+    private EntityService entityService;
+    
+    @Autowired
+    private ObjectMapper objectMapper;
+    
+    @Test
+    void shouldCreateEntity() throws Exception {
+        // Given
+        CreateEntityDTO dto = new CreateEntityDTO("Test Entity");
+        EntityDTO expected = new EntityDTO(1L, "Test Entity");
+        when(entityService.create(any(CreateEntityDTO.class))).thenReturn(expected);
+        
+        // When & Then
+        mockMvc.perform(post("/api/entities")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(dto)))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.id").value(1L))
+                .andExpect(jsonPath("$.name").value("Test Entity"));
+    }
+    
+    @Test
+    void shouldReturn404WhenEntityNotFound() throws Exception {
+        // Given
+        when(entityService.findById(999L)).thenThrow(new EntityNotFoundException());
+        
+        // When & Then
+        mockMvc.perform(get("/api/entities/999"))
+                .andExpect(status().isNotFound());
+    }
+}
+```
+
+## TESTES DE SERVICE
+```java
+@ExtendWith(MockitoExtension.class)
+class EntityServiceTest {
+    
+    @Mock
+    private EntityRepository repository;
+    
+    @InjectMocks
+    private EntityService entityService;
+    
+    @Test
+    void shouldCreateEntity() {
+        // Given
+        CreateEntityDTO dto = new CreateEntityDTO("Test");
+        Entity entity = new Entity("Test");
+        Entity saved = new Entity(1L, "Test");
+        
+        when(repository.save(any(Entity.class))).thenReturn(saved);
+        
+        // When
+        EntityDTO result = entityService.create(dto);
+        
+        // Then
+        assertThat(result.getId()).isEqualTo(1L);
+        assertThat(result.getName()).isEqualTo("Test");
+        verify(repository).save(any(Entity.class));
+    }
+    
+    @Test
+    void shouldThrowExceptionWhenBusinessRuleViolated() {
+        // Given
+        CreateEntityDTO invalidDto = new CreateEntityDTO("");
+        
+        // When & Then
+        assertThrows(BusinessException.class, () -> entityService.create(invalidDto));
+    }
+}
+```
+
+## TESTES DE REPOSITORY
+```java
+@DataJpaTest
+class EntityRepositoryTest {
+    
+    @Autowired
+    private TestEntityManager entityManager;
+    
+    @Autowired
+    private EntityRepository repository;
+    
+    @Test
+    void shouldFindByActiveTrue() {
+        // Given
+        Entity active = new Entity("Active", true);
+        Entity inactive = new Entity("Inactive", false);
+        entityManager.persistAndFlush(active);
+        entityManager.persistAndFlush(inactive);
+        
+        // When
+        List<Entity> result = repository.findByActiveTrue();
+        
+        // Then
+        assertThat(result).hasSize(1);
+        assertThat(result.get(0).getName()).isEqualTo("Active");
+    }
+}
+```
+
+## COBERTURA OBRIGATÓRIA
+- ✅ Todos os endpoints REST
+- ✅ Lógica de negócio dos serviços  
+- ✅ Queries customizadas dos repositories
+- ✅ Cenários de erro e exceções
+- ✅ Validações de entrada
+- ✅ Regras de negócio críticas

@@ -1,0 +1,48 @@
+# Prompt para conversão Delphi → Java Spring Boot
+
+## CONTEXTO DA MODERNIZAÇÃO
+Você está convertendo um sistema Delphi para Java Spring Boot moderno.
+
+## MAPEAMENTOS PRINCIPAIS
+
+### TForm → @RestController
+- Eventos de botão → Endpoints REST
+- Validações → Bean Validation  
+- Navegação → Redirecionamentos HTTP
+
+### TDataModule → @Repository + @Service  
+- Queries → Métodos Repository
+- Transações → @Transactional
+- Conexões → DataSource
+
+### Classes Business → @Service
+- Métodos → Lógica de negócio
+- Validações → Regras de negócio
+- Cálculos → Operações
+
+## ESTRUTURA JAVA SPRING
+```
+src/main/java/
+├── config/          # Configurações
+├── controller/      # REST APIs
+├── service/         # Lógica de negócio  
+├── repository/      # Persistência
+├── entity/          # Entidades JPA
+├── dto/             # Transferência de dados
+└── exception/       # Tratamento de erros
+```
+
+## TECNOLOGIAS
+- Spring Boot 3.x
+- Spring Data JPA
+- Spring Web MVC
+- Bean Validation
+- Banco H2/PostgreSQL
+
+## SAÍDA ESPERADA
+Para cada arquivo Delphi:
+1. **Análise**: Funcionalidade atual
+2. **Mapeamento**: Equivalente Spring
+3. **Código**: Implementação Java
+4. **Testes**: Cobertura básica
+5. **Config**: Configurações necessárias

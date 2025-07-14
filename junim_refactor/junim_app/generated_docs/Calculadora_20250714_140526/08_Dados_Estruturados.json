@@ -1,0 +1,959 @@
+{
+  "metadata": {
+    "project_name": "Calculadora",
+    "analysis_date": "2025-07-14T14:05:26.880228",
+    "analyzer_version": "1.0.0",
+    "total_files_analyzed": 15,
+    "analysis_config": {
+      "project_name": "Calculadora",
+      "include_comments": true,
+      "analyze_business_logic": true,
+      "generate_correlations": true
+    }
+  },
+  "project_info": {
+    "project_path": "C:\\Users\\Suporte\\AppData\\Local\\Temp\\junim_project_lh_c40cr\\extracted",
+    "total_files": 15,
+    "file_counts": {
+      "pascal_units": 10,
+      "forms": 1,
+      "projects": 1,
+      "others": 3
+    },
+    "delphi_version": "Unknown",
+    "architecture_type": "Desktop Application"
+  },
+  "units_analysis": {
+    "Classe.Calculadora": {
+      "file_path": "C:\\Users\\Suporte\\AppData\\Local\\Temp\\junim_project_lh_c40cr\\extracted\\SimpleCalc-master\\Classe.Calculadora.pas",
+      "lines_count": 112,
+      "unit_type": "form",
+      "classes": [
+        {
+          "name": "TCalculadora",
+          "parent_class": "TInterfacedObject, iCalculadora, iCalculadoraDisplay",
+          "purpose": "general"
+        }
+      ],
+      "procedures_functions": [
+        {
+          "name": "Dividir",
+          "type": "function",
+          "purpose": "General Processing",
+          "complexity": 1
+        },
+        {
+          "name": "Multiplicar",
+          "type": "function",
+          "purpose": "General Processing",
+          "complexity": 1
+        },
+        {
+          "name": "Subtrair",
+          "type": "function",
+          "purpose": "General Processing",
+          "complexity": 1
+        },
+        {
+          "name": "Somar",
+          "type": "function",
+          "purpose": "General Processing",
+          "complexity": 1
+        },
+        {
+          "name": "new",
+          "type": "function",
+          "purpose": "General Processing",
+          "complexity": 1
+        },
+        {
+          "name": "Display",
+          "type": "function",
+          "purpose": "General Processing",
+          "complexity": 1
+        },
+        {
+          "name": "Add",
+          "type": "function",
+          "purpose": "General Processing",
+          "complexity": 1
+        },
+        {
+          "name": "Add",
+          "type": "function",
+          "purpose": "General Processing",
+          "complexity": 1
+        },
+        {
+          "name": "Add",
+          "type": "function",
+          "purpose": "General Processing",
+          "complexity": 1
+        },
+        {
+          "name": "Resultado",
+          "type": "function",
+          "purpose": "General Processing",
+          "complexity": 1
+        },
+        {
+          "name": "EndDisplay",
+          "type": "function",
+          "purpose": "General Processing",
+          "complexity": 1
+        },
+        {
+          "name": "TCalculadora",
+          "type": "function",
+          "purpose": "General Processing",
+          "complexity": 1
+        },
+        {
+          "name": "TCalculadora",
+          "type": "function",
+          "purpose": "General Processing",
+          "complexity": 1
+        },
+        {
+          "name": "TCalculadora",
+          "type": "function",
+          "purpose": "General Processing",
+          "complexity": 1
+        },
+        {
+          "name": "TCalculadora",
+          "type": "function",
+          "purpose": "General Processing",
+          "complexity": 1
+        },
+        {
+          "name": "TCalculadora",
+          "type": "function",
+          "purpose": "General Processing",
+          "complexity": 1
+        },
+        {
+          "name": "TCalculadora",
+          "type": "function",
+          "purpose": "General Processing",
+          "complexity": 1
+        },
+        {
+          "name": "TCalculadora",
+          "type": "function",
+          "purpose": "General Processing",
+          "complexity": 1
+        },
+        {
+          "name": "TCalculadora",
+          "type": "function",
+          "purpose": "General Processing",
+          "complexity": 1
+        },
+        {
+          "name": "TCalculadora",
+          "type": "function",
+          "purpose": "General Processing",
+          "complexity": 1
+        },
+        {
+          "name": "TCalculadora",
+          "type": "function",
+          "purpose": "General Processing",
+          "complexity": 1
+        },
+        {
+          "name": "TCalculadora",
+          "type": "function",
+          "purpose": "General Processing",
+          "complexity": 1
+        }
+      ],
+      "uses_units": [
+        "Vcl.Controls",
+        "Classe.Interfaces",
+        "Classe.helpers",
+        "Classe.Dividir",
+        "Classe.Somar",
+        "Classe.Subtrair",
+        "Classe.Multiplicar",
+        "System.Generics.Collections",
+        "Classe.Eventos"
+      ],
+      "database_operations": [],
+      "complexity_metrics": {
+        "lines_of_code": 88,
+        "cyclomatic_complexity": 1,
+        "function_count": 22,
+        "class_count": 1,
+        "nesting_depth": 1
+      },
+      "comments": [
+        "TCalculadora"
+      ]
+    },
+    "Classe.Dividir": {
+      "file_path": "C:\\Users\\Suporte\\AppData\\Local\\Temp\\junim_project_lh_c40cr\\extracted\\SimpleCalc-master\\Classe.Dividir.pas",
+      "lines_count": 46,
+      "unit_type": "form",
+      "classes": [
+        {
+          "name": "TDividir",
+          "parent_class": "TOperacoes",
+          "purpose": "general"
+        }
+      ],
+      "procedures_functions": [
+        {
+          "name": "Executar",
+          "type": "function",
+          "purpose": "General Processing",
+          "complexity": 1
+        },
+        {
+          "name": "new",
+          "type": "function",
+          "purpose": "General Processing",
+          "complexity": 1
+        },
+        {
+          "name": "TDividir",
+          "type": "function",
+          "purpose": "General Processing",
+          "complexity": 1
+        },
+        {
+          "name": "TDividir",
+          "type": "function",
+          "purpose": "General Processing",
+          "complexity": 1
+        }
+      ],
+      "uses_units": [
+        "Classe.Interfaces",
+        "Classe.Operacoes",
+        "System.Generics.Collections"
+      ],
+      "database_operations": [],
+      "complexity_metrics": {
+        "lines_of_code": 36,
+        "cyclomatic_complexity": 2,
+        "function_count": 4,
+        "class_count": 1,
+        "nesting_depth": 2
+      },
+      "comments": []
+    },
+    "Classe.Eventos": {
+      "file_path": "C:\\Users\\Suporte\\AppData\\Local\\Temp\\junim_project_lh_c40cr\\extracted\\SimpleCalc-master\\Classe.Eventos.pas",
+      "lines_count": 10,
+      "unit_type": "unit",
+      "classes": [],
+      "procedures_functions": [],
+      "uses_units": [],
+      "database_operations": [],
+      "complexity_metrics": {
+        "lines_of_code": 6,
+        "cyclomatic_complexity": 1,
+        "function_count": 0,
+        "class_count": 0,
+        "nesting_depth": 0
+      },
+      "comments": []
+    },
+    "Classe.helpers": {
+      "file_path": "C:\\Users\\Suporte\\AppData\\Local\\Temp\\junim_project_lh_c40cr\\extracted\\SimpleCalc-master\\Classe.helpers.pas",
+      "lines_count": 33,
+      "unit_type": "unit",
+      "classes": [],
+      "procedures_functions": [
+        {
+          "name": "ToCurrency",
+          "type": "function",
+          "purpose": "General Processing",
+          "complexity": 1
+        },
+        {
+          "name": "ToCurrency",
+          "type": "function",
+          "purpose": "General Processing",
+          "complexity": 1
+        },
+        {
+          "name": "TCaptionHelper",
+          "type": "function",
+          "purpose": "General Processing",
+          "complexity": 1
+        },
+        {
+          "name": "TStrHelper",
+          "type": "function",
+          "purpose": "General Processing",
+          "complexity": 1
+        }
+      ],
+      "uses_units": [
+        "Vcl.Controls"
+      ],
+      "database_operations": [],
+      "complexity_metrics": {
+        "lines_of_code": 23,
+        "cyclomatic_complexity": 3,
+        "function_count": 4,
+        "class_count": 0,
+        "nesting_depth": 1
+      },
+      "comments": []
+    },
+    "Classe.Interfaces": {
+      "file_path": "C:\\Users\\Suporte\\AppData\\Local\\Temp\\junim_project_lh_c40cr\\extracted\\SimpleCalc-master\\Classe.Interfaces.pas",
+      "lines_count": 44,
+      "unit_type": "unit",
+      "classes": [],
+      "procedures_functions": [
+        {
+          "name": "Executar",
+          "type": "function",
+          "purpose": "General Processing",
+          "complexity": 1
+        },
+        {
+          "name": "Display",
+          "type": "function",
+          "purpose": "General Processing",
+          "complexity": 1
+        },
+        {
+          "name": "Resultado",
+          "type": "function",
+          "purpose": "General Processing",
+          "complexity": 1
+        },
+        {
+          "name": "EndDisplay",
+          "type": "function",
+          "purpose": "General Processing",
+          "complexity": 1
+        },
+        {
+          "name": "Resultado",
+          "type": "function",
+          "purpose": "General Processing",
+          "complexity": 1
+        },
+        {
+          "name": "EndDisplay",
+          "type": "function",
+          "purpose": "General Processing",
+          "complexity": 1
+        },
+        {
+          "name": "Add",
+          "type": "function",
+          "purpose": "General Processing",
+          "complexity": 1
+        },
+        {
+          "name": "Add",
+          "type": "function",
+          "purpose": "General Processing",
+          "complexity": 1
+        },
+        {
+          "name": "Add",
+          "type": "function",
+          "purpose": "General Processing",
+          "complexity": 1
+        },
+        {
+          "name": "Dividir",
+          "type": "function",
+          "purpose": "General Processing",
+          "complexity": 1
+        },
+        {
+          "name": "Multiplicar",
+          "type": "function",
+          "purpose": "General Processing",
+          "complexity": 1
+        },
+        {
+          "name": "Subtrair",
+          "type": "function",
+          "purpose": "General Processing",
+          "complexity": 1
+        },
+        {
+          "name": "Somar",
+          "type": "function",
+          "purpose": "General Processing",
+          "complexity": 1
+        },
+        {
+          "name": "Display",
+          "type": "function",
+          "purpose": "General Processing",
+          "complexity": 1
+        }
+      ],
+      "uses_units": [
+        "Classe.Eventos"
+      ],
+      "database_operations": [],
+      "complexity_metrics": {
+        "lines_of_code": 35,
+        "cyclomatic_complexity": 1,
+        "function_count": 14,
+        "class_count": 0,
+        "nesting_depth": 0
+      },
+      "comments": [
+        "28D8927A-A058-4D00-BA13-504165708AB5",
+        "9C3CAB76-75A0-4290-BCFA-A7B0892A3E52",
+        "C005F08A-6B27-45AE-BEFD-ECC90A8C744B",
+        "DD6D1506-EFE0-4F08-8531-017933C3F598"
+      ]
+    },
+    "Classe.Multiplicar": {
+      "file_path": "C:\\Users\\Suporte\\AppData\\Local\\Temp\\junim_project_lh_c40cr\\extracted\\SimpleCalc-master\\Classe.Multiplicar.pas",
+      "lines_count": 47,
+      "unit_type": "form",
+      "classes": [
+        {
+          "name": "TMultiplicar",
+          "parent_class": "TOperacoes",
+          "purpose": "general"
+        }
+      ],
+      "procedures_functions": [
+        {
+          "name": "new",
+          "type": "function",
+          "purpose": "General Processing",
+          "complexity": 1
+        },
+        {
+          "name": "Executar",
+          "type": "function",
+          "purpose": "General Processing",
+          "complexity": 1
+        },
+        {
+          "name": "TMultiplicar",
+          "type": "function",
+          "purpose": "General Processing",
+          "complexity": 1
+        },
+        {
+          "name": "TMultiplicar",
+          "type": "function",
+          "purpose": "General Processing",
+          "complexity": 1
+        }
+      ],
+      "uses_units": [
+        "Classe.Operacoes",
+        "Classe.helpers",
+        "System.SysUtils",
+        "Classe.Interfaces",
+        "System.Generics.Collections"
+      ],
+      "database_operations": [],
+      "complexity_metrics": {
+        "lines_of_code": 36,
+        "cyclomatic_complexity": 2,
+        "function_count": 4,
+        "class_count": 1,
+        "nesting_depth": 2
+      },
+      "comments": []
+    },
+    "Classe.Operacoes": {
+      "file_path": "C:\\Users\\Suporte\\AppData\\Local\\Temp\\junim_project_lh_c40cr\\extracted\\SimpleCalc-master\\Classe.Operacoes.pas",
+      "lines_count": 56,
+      "unit_type": "class",
+      "classes": [
+        {
+          "name": "TOperacoes",
+          "parent_class": "TInterfacedObject, iOperacao, iOperacoesDisplay",
+          "purpose": "general"
+        }
+      ],
+      "procedures_functions": [
+        {
+          "name": "DisplayTotal",
+          "type": "procedure",
+          "purpose": "General Processing",
+          "complexity": 1
+        },
+        {
+          "name": "Executar",
+          "type": "function",
+          "purpose": "General Processing",
+          "complexity": 1
+        },
+        {
+          "name": "Resultado",
+          "type": "function",
+          "purpose": "General Processing",
+          "complexity": 1
+        },
+        {
+          "name": "EndDisplay",
+          "type": "function",
+          "purpose": "General Processing",
+          "complexity": 1
+        },
+        {
+          "name": "Display",
+          "type": "function",
+          "purpose": "General Processing",
+          "complexity": 1
+        },
+        {
+          "name": "TOperacoes",
+          "type": "function",
+          "purpose": "General Processing",
+          "complexity": 2
+        },
+        {
+          "name": "TOperacoes",
+          "type": "procedure",
+          "purpose": "General Processing",
+          "complexity": 2
+        },
+        {
+          "name": "TOperacoes",
+          "type": "function",
+          "purpose": "General Processing",
+          "complexity": 2
+        },
+        {
+          "name": "TOperacoes",
+          "type": "function",
+          "purpose": "General Processing",
+          "complexity": 2
+        },
+        {
+          "name": "TOperacoes",
+          "type": "function",
+          "purpose": "General Processing",
+          "complexity": 2
+        }
+      ],
+      "uses_units": [
+        "Classe.Interfaces",
+        "System.Generics.Collections",
+        "Classe.Eventos"
+      ],
+      "database_operations": [],
+      "complexity_metrics": {
+        "lines_of_code": 41,
+        "cyclomatic_complexity": 2,
+        "function_count": 10,
+        "class_count": 1,
+        "nesting_depth": 1
+      },
+      "comments": [
+        "TOperacoes"
+      ]
+    },
+    "Classe.Somar": {
+      "file_path": "C:\\Users\\Suporte\\AppData\\Local\\Temp\\junim_project_lh_c40cr\\extracted\\SimpleCalc-master\\Classe.Somar.pas",
+      "lines_count": 47,
+      "unit_type": "form",
+      "classes": [
+        {
+          "name": "TSoma",
+          "parent_class": "TOperacoes",
+          "purpose": "general"
+        }
+      ],
+      "procedures_functions": [
+        {
+          "name": "Executar",
+          "type": "function",
+          "purpose": "General Processing",
+          "complexity": 1
+        },
+        {
+          "name": "new",
+          "type": "function",
+          "purpose": "General Processing",
+          "complexity": 1
+        },
+        {
+          "name": "TSoma",
+          "type": "function",
+          "purpose": "General Processing",
+          "complexity": 1
+        },
+        {
+          "name": "TSoma",
+          "type": "function",
+          "purpose": "General Processing",
+          "complexity": 1
+        }
+      ],
+      "uses_units": [
+        "Classe.interfaces",
+        "Classe.helpers",
+        "System.SysUtils",
+        "Classe.Operacoes",
+        "System.Generics.Collections"
+      ],
+      "database_operations": [],
+      "complexity_metrics": {
+        "lines_of_code": 37,
+        "cyclomatic_complexity": 2,
+        "function_count": 4,
+        "class_count": 1,
+        "nesting_depth": 2
+      },
+      "comments": []
+    },
+    "Classe.Subtrair": {
+      "file_path": "C:\\Users\\Suporte\\AppData\\Local\\Temp\\junim_project_lh_c40cr\\extracted\\SimpleCalc-master\\Classe.Subtrair.pas",
+      "lines_count": 45,
+      "unit_type": "form",
+      "classes": [
+        {
+          "name": "TSubtrair",
+          "parent_class": "TOperacoes",
+          "purpose": "general"
+        }
+      ],
+      "procedures_functions": [
+        {
+          "name": "Executar",
+          "type": "function",
+          "purpose": "General Processing",
+          "complexity": 1
+        },
+        {
+          "name": "new",
+          "type": "function",
+          "purpose": "General Processing",
+          "complexity": 1
+        },
+        {
+          "name": "TSubtrair",
+          "type": "function",
+          "purpose": "General Processing",
+          "complexity": 1
+        },
+        {
+          "name": "TSubtrair",
+          "type": "function",
+          "purpose": "General Processing",
+          "complexity": 1
+        }
+      ],
+      "uses_units": [
+        "Classe.Interfaces",
+        "Classe.helpers",
+        "System.SysUtils",
+        "Classe.Operacoes",
+        "System.Generics.Collections"
+      ],
+      "database_operations": [],
+      "complexity_metrics": {
+        "lines_of_code": 36,
+        "cyclomatic_complexity": 2,
+        "function_count": 4,
+        "class_count": 1,
+        "nesting_depth": 2
+      },
+      "comments": [
+        "TSubrair"
+      ]
+    },
+    "Unit4": {
+      "file_path": "C:\\Users\\Suporte\\AppData\\Local\\Temp\\junim_project_lh_c40cr\\extracted\\SimpleCalc-master\\Unit4.pas",
+      "lines_count": 74,
+      "unit_type": "form",
+      "classes": [
+        {
+          "name": "TForm4",
+          "parent_class": "TForm",
+          "purpose": "general"
+        }
+      ],
+      "procedures_functions": [
+        {
+          "name": "Button4Click",
+          "type": "procedure",
+          "purpose": "User Interface Event",
+          "complexity": 1
+        },
+        {
+          "name": "Button1Click",
+          "type": "procedure",
+          "purpose": "User Interface Event",
+          "complexity": 1
+        },
+        {
+          "name": "Button2Click",
+          "type": "procedure",
+          "purpose": "User Interface Event",
+          "complexity": 1
+        },
+        {
+          "name": "FormCreate",
+          "type": "procedure",
+          "purpose": "Data Creation",
+          "complexity": 1
+        },
+        {
+          "name": "Button3Click",
+          "type": "procedure",
+          "purpose": "User Interface Event",
+          "complexity": 1
+        },
+        {
+          "name": "exibeResultado",
+          "type": "procedure",
+          "purpose": "General Processing",
+          "complexity": 1
+        },
+        {
+          "name": "TForm4",
+          "type": "procedure",
+          "purpose": "General Processing",
+          "complexity": 1
+        },
+        {
+          "name": "TForm4",
+          "type": "procedure",
+          "purpose": "General Processing",
+          "complexity": 1
+        },
+        {
+          "name": "TForm4",
+          "type": "procedure",
+          "purpose": "General Processing",
+          "complexity": 1
+        },
+        {
+          "name": "TForm4",
+          "type": "procedure",
+          "purpose": "General Processing",
+          "complexity": 1
+        },
+        {
+          "name": "TForm4",
+          "type": "procedure",
+          "purpose": "General Processing",
+          "complexity": 1
+        },
+        {
+          "name": "TForm4",
+          "type": "procedure",
+          "purpose": "General Processing",
+          "complexity": 1
+        }
+      ],
+      "uses_units": [
+        "Winapi.Windows",
+        "Winapi.Messages",
+        "System.SysUtils",
+        "System.Variants",
+        "System.Classes",
+        "Vcl.Graphics",
+        "Classe.Calculadora",
+        "Classe.helpers",
+        "Vcl.Controls",
+        "Vcl.Forms",
+        "Vcl.Dialogs",
+        "Vcl.StdCtrls",
+        "Classe.Interfaces"
+      ],
+      "database_operations": [],
+      "complexity_metrics": {
+        "lines_of_code": 58,
+        "cyclomatic_complexity": 1,
+        "function_count": 12,
+        "class_count": 1,
+        "nesting_depth": 1
+      },
+      "comments": [
+        "Private declarations",
+        "Public declarations",
+        "$R *.dfm"
+      ]
+    }
+  },
+  "characteristics": {
+    "architecture_pattern": "Traditional VCL",
+    "complexity_level": "Low",
+    "maintainability_score": 1.0,
+    "modernization_readiness": "Good",
+    "technology_stack": [
+      "Delphi/Object Pascal",
+      "VCL Components",
+      "Multiple Forms Architecture"
+    ],
+    "strengths": [
+      "Moderate complexity",
+      "Manageable codebase size"
+    ],
+    "weaknesses": [],
+    "risk_factors": []
+  },
+  "execution_flows": {
+    "startup_sequence": [
+      {
+        "description": "Initialize Unit4",
+        "unit": "Unit4",
+        "procedure": "FormCreate"
+      }
+    ],
+    "user_workflows": [
+      {
+        "name": "User Action: Button4Click",
+        "module": "Unit4",
+        "description": "User interaction in Unit4",
+        "steps": [
+          "User triggers Button4Click"
+        ]
+      },
+      {
+        "name": "User Action: Button1Click",
+        "module": "Unit4",
+        "description": "User interaction in Unit4",
+        "steps": [
+          "User triggers Button1Click"
+        ]
+      },
+      {
+        "name": "User Action: Button2Click",
+        "module": "Unit4",
+        "description": "User interaction in Unit4",
+        "steps": [
+          "User triggers Button2Click"
+        ]
+      },
+      {
+        "name": "User Action: Button3Click",
+        "module": "Unit4",
+        "description": "User interaction in Unit4",
+        "steps": [
+          "User triggers Button3Click"
+        ]
+      }
+    ],
+    "error_handling_flows": [],
+    "shutdown_sequence": []
+  },
+  "data_flows": {
+    "database_flows": [],
+    "form_data_flows": [],
+    "component_interactions": [],
+    "data_transformations": []
+  },
+  "requirements": {
+    "functional_requirements": [
+      {
+        "id": "RF-001",
+        "description": "O sistema deve fornecer interface para Classe.Calculadora",
+        "source": "Classe.Calculadora",
+        "type": "User Interface",
+        "priority": "High"
+      },
+      {
+        "id": "RF-002",
+        "description": "O sistema deve fornecer interface para Classe.Dividir",
+        "source": "Classe.Dividir",
+        "type": "User Interface",
+        "priority": "High"
+      },
+      {
+        "id": "RF-003",
+        "description": "O sistema deve fornecer interface para Classe.Multiplicar",
+        "source": "Classe.Multiplicar",
+        "type": "User Interface",
+        "priority": "High"
+      },
+      {
+        "id": "RF-004",
+        "description": "O sistema deve fornecer interface para Classe.Somar",
+        "source": "Classe.Somar",
+        "type": "User Interface",
+        "priority": "High"
+      },
+      {
+        "id": "RF-005",
+        "description": "O sistema deve fornecer interface para Classe.Subtrair",
+        "source": "Classe.Subtrair",
+        "type": "User Interface",
+        "priority": "High"
+      },
+      {
+        "id": "RF-006",
+        "description": "O sistema deve fornecer interface para Unit4",
+        "source": "Unit4",
+        "type": "User Interface",
+        "priority": "High"
+      }
+    ],
+    "non_functional_requirements": [
+      {
+        "id": "RNF-001",
+        "category": "Performance",
+        "description": "O sistema deve responder às solicitações em menos de 3 segundos",
+        "metric": "Response Time < 3s",
+        "priority": "High"
+      },
+      {
+        "id": "RNF-002",
+        "category": "Scalability",
+        "description": "O sistema deve suportar expansão baseada em 15 módulos originais",
+        "metric": "Modular architecture for 15 modules",
+        "priority": "Medium"
+      },
+      {
+        "id": "RNF-003",
+        "category": "Maintainability",
+        "description": "O código deve seguir padrões Spring Boot para facilitar manutenção",
+        "metric": "Spring Boot best practices compliance",
+        "priority": "High"
+      },
+      {
+        "id": "RNF-004",
+        "category": "Security",
+        "description": "O sistema deve implementar autenticação e autorização",
+        "metric": "Spring Security implementation",
+        "priority": "High"
+      }
+    ],
+    "business_rules": [],
+    "data_requirements": [],
+    "interface_requirements": [
+      {
+        "id": "RI-001",
+        "description": "Interface web responsiva para 6 telas principais",
+        "technology": "Spring MVC + Thymeleaf ou REST API",
+        "forms_count": 6
+      },
+      {
+        "id": "RI-002",
+        "description": "Interface deve manter funcionalidades equivalentes ao sistema original",
+        "compatibility": "Functional equivalent to Delphi forms"
+      }
+    ]
+  },
+  "business_logic": {
+    "business_rules": [],
+    "validations": [],
+    "calculations": [],
+    "workflows": [],
+    "data_processing": [],
+    "integrations": []
+  },
+  "correlations": {
+    "component_mappings": [],
+    "pattern_mappings": [],
+    "architecture_mappings": [],
+    "technology_mappings": []
+  }
+}

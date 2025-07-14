@@ -34,6 +34,9 @@ class ModernizationPipeline:
         self.llm_service = LLMService(config)
         self.java_builder = JavaBuilder()
         
+        # Gerenciador de prompts especializado (opcional)
+        self.prompt_manager = None
+        
         # Estado do pipeline
         self.current_step = 0
         self.total_steps = 5
@@ -41,6 +44,17 @@ class ModernizationPipeline:
         self.rag_context = None
         self.generated_code = None
         self.java_project_path = None
+    
+    def set_prompt_manager(self, prompt_manager):
+        """Define o gerenciador de prompts especializados"""
+        self.prompt_manager = prompt_manager
+        logger.info("Prompt manager configurado para usar prompts especializados")
+    
+    def set_analysis_data(self, analysis_results, generated_docs):
+        """Define dados da análise prévia para uso na modernização"""
+        self.analysis_results = analysis_results
+        self.generated_docs = generated_docs
+        logger.info("Dados de análise prévia carregados para modernização")
     
     def run(self, 
             delphi_project_path: str, 
@@ -147,11 +161,42 @@ class ModernizationPipeline:
             if not self.delphi_structure or not self.rag_context:
                 raise Exception("Dados necessários não disponíveis")
             
+            # Configura prompts especializados se disponível
+            prompt_config = {}
+            if self.prompt_manager:
+                logger.info("Usando prompts especializados para geração de código")
+                
+                # Determina o tipo de prompt baseado na configuração
+                modernization_type = self.config.get('type', 'Conversão Completa')
+                
+                if modernization_type == 'Apenas Entidades':
+                    prompt_config['primary_prompt'] = self.prompt_manager.get_specialized_prompt('entity_mapping')
+                elif modernization_type == 'Apenas APIs':
+                    prompt_config['primary_prompt'] = self.prompt_manager.get_specialized_prompt('api_design')
+                elif modernization_type == 'Apenas Serviços':
+                    prompt_config['primary_prompt'] = self.prompt_manager.get_specialized_prompt('service_layer')
+                else:
+                    # Conversão completa - usa prompt base com conversão
+                    prompt_config['primary_prompt'] = self.prompt_manager.get_specialized_prompt('conversion')
+                
+                # Adiciona prompts auxiliares
+                if self.config.get('include_tests', False):
+                    prompt_config['testing_prompt'] = self.prompt_manager.get_specialized_prompt('testing')
+                
+                # Se há documentação gerada, usa prompt enriquecido
+                if (hasattr(self, 'analysis_results') and hasattr(self, 'generated_docs')):
+                    prompt_config['enhanced_prompt'] = self.prompt_manager.get_specialized_prompt(
+                        'documentation_enhanced',
+                        analysis_results=self.analysis_results,
+                        generated_docs=self.generated_docs
+                    )
+            
             # Gera código Java usando LLM
             self.generated_code = self.llm_service.generate_code(
                 self.delphi_structure,
                 self.rag_context,
-                progress_callback
+                progress_callback,
+                prompt_config=prompt_config
             )
             
             # Valida resultado
