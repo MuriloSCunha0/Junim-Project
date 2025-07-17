@@ -32,7 +32,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 def render_legacy_analysis_interface():
-    """Renderiza a interface de análise de projetos legados"""
+    """Interface principal para análise de projetos legados"""
     
     st.header("🔍 Análise de Projeto Legado")
     st.markdown("**Faça upload do seu projeto Delphi para gerar documentação completa**")
@@ -40,6 +40,22 @@ def render_legacy_analysis_interface():
     # Inicializa objetos na sessão
     if 'analyzer' not in st.session_state:
         st.session_state.analyzer = LegacyProjectAnalyzer()
+        # Garantir que está usando prompts especializados
+        try:
+            from prompts.specialized_prompts import PromptManager
+            st.session_state.analyzer.prompt_manager = PromptManager()
+            logger.info("✅ PromptManager especializado configurado para análise")
+            
+            # Testa se os métodos estão disponíveis
+            if hasattr(st.session_state.analyzer.prompt_manager, 'get_analysis_prompt'):
+                test_prompt = st.session_state.analyzer.prompt_manager.get_analysis_prompt()
+                logger.info(f"✅ Prompt de análise carregado: {len(test_prompt)} caracteres")
+            else:
+                logger.warning("⚠️ Método get_analysis_prompt não encontrado")
+                
+        except ImportError as e:
+            logger.warning(f"⚠️ Falha ao importar PromptManager especializado: {str(e)}")
+            st.warning("⚠️ Usando prompts padrão para análise")
     
     if 'doc_generator' not in st.session_state:
         st.session_state.doc_generator = DocumentationGenerator()
@@ -50,6 +66,40 @@ def render_legacy_analysis_interface():
     if 'generated_docs' not in st.session_state:
         st.session_state.generated_docs = {}
     
+    # Exibe informações sobre prompts
+    with st.expander("🤖 Configuração de Prompts"):
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            if hasattr(st.session_state.analyzer, 'prompt_manager') and st.session_state.analyzer.prompt_manager:
+                st.success("✅ **Prompts Especializados Ativos**")
+                st.info("Seus prompts personalizados estão sendo usados para análise")
+                
+                # Verifica quais métodos estão disponíveis
+                available_methods = []
+                for method_name in ['get_analysis_prompt', 'get_documentation_generation_prompt', 'get_specialized_prompt']:
+                    if hasattr(st.session_state.analyzer.prompt_manager, method_name):
+                        available_methods.append(method_name)
+                
+                if available_methods:
+                    st.write("**Métodos disponíveis:**")
+                    for method in available_methods:
+                        st.write(f"• {method}")
+                
+            else:
+                st.warning("⚠️ **Usando Prompts Padrão**")
+                st.info("Prompts especializados não estão disponíveis")
+        
+        with col2:
+            if st.button("🔄 Recarregar Prompts"):
+                try:
+                    from prompts.specialized_prompts import PromptManager
+                    st.session_state.analyzer.prompt_manager = PromptManager()
+                    st.success("✅ Prompts recarregados com sucesso!")
+                    st.experimental_rerun()
+                except Exception as e:
+                    st.error(f"❌ Erro ao recarregar prompts: {str(e)}")
+
     # Tabs para organizar funcionalidades
     tab1, tab2, tab3 = st.tabs(["📁 Upload & Análise", "📄 Documentos Gerados", "📊 Visualização"])
     
@@ -84,22 +134,54 @@ def render_upload_analysis_tab():
         )
         
         if uploaded_file is not None:
-            # Salva arquivo temporário
-            temp_dir = tempfile.mkdtemp(prefix="junim_project_")
-            zip_path = os.path.join(temp_dir, uploaded_file.name)
-            
-            with open(zip_path, "wb") as f:
-                f.write(uploaded_file.getbuffer())
-            
-            # Extrai ZIP
-            extract_dir = os.path.join(temp_dir, "extracted")
             try:
+                # Validação adicional para garantir que o arquivo é válido
+                if not hasattr(uploaded_file, 'seek') or not hasattr(uploaded_file, 'getbuffer'):
+                    st.error("❌ Arquivo inválido. Por favor, faça o upload novamente.")
+                    return
+                
+                # Salva arquivo temporário
+                temp_dir = tempfile.mkdtemp(prefix="junim_project_")
+                zip_path = os.path.join(temp_dir, uploaded_file.name)
+                
+                # Garante que o arquivo está no início para leitura
+                try:
+                    uploaded_file.seek(0)
+                except Exception as seek_error:
+                    st.error(f"❌ Erro ao acessar arquivo: {seek_error}")
+                    return
+                
+                # Lê o conteúdo do arquivo
+                try:
+                    file_content = uploaded_file.getbuffer()
+                    if len(file_content) == 0:
+                        st.error("❌ Arquivo está vazio. Por favor, selecione um arquivo válido.")
+                        return
+                except Exception as read_error:
+                    st.error(f"❌ Erro ao ler arquivo: {read_error}")
+                    return
+                
+                with open(zip_path, "wb") as f:
+                    f.write(file_content)
+                
+                # Extrai ZIP
+                extract_dir = os.path.join(temp_dir, "extracted")
+                os.makedirs(extract_dir, exist_ok=True)
+                
                 with zipfile.ZipFile(zip_path, 'r') as zip_ref:
                     zip_ref.extractall(extract_dir)
-                project_path = extract_dir
-                st.success(f"✅ Arquivo extraído com sucesso: {uploaded_file.name}")
+                
+                # Verifica se a extração foi bem-sucedida
+                if os.path.exists(extract_dir) and os.listdir(extract_dir):
+                    project_path = extract_dir
+                    st.success(f"✅ Arquivo extraído com sucesso: {uploaded_file.name}")
+                else:
+                    st.error("❌ Erro: Arquivo ZIP vazio ou corrompido")
+                    return
+                    
             except Exception as e:
-                st.error(f"❌ Erro ao extrair arquivo: {str(e)}")
+                st.error(f"❌ Erro ao processar arquivo ZIP: {str(e)}")
+                logger.error(f"Erro ao processar ZIP: {str(e)}")
                 return
     
     else:  # Pasta Local
@@ -148,6 +230,19 @@ def render_upload_analysis_tab():
     
     # Botão de análise
     if project_path and st.button("🚀 Iniciar Análise", type="primary"):
+        # Valida se o projeto contém arquivos Delphi
+        delphi_files = []
+        for root, dirs, files in os.walk(project_path):
+            for file in files:
+                if file.lower().endswith(('.pas', '.dfm', '.dpr')):
+                    delphi_files.append(file)
+        
+        if not delphi_files:
+            st.error("❌ Nenhum arquivo Delphi (.pas, .dfm, .dpr) encontrado no projeto!")
+            return
+        
+        st.info(f"📁 Encontrados {len(delphi_files)} arquivos Delphi para análise")
+        
         start_analysis(
             project_path, 
             project_name, 
@@ -158,74 +253,146 @@ def render_upload_analysis_tab():
 
 def start_analysis(project_path: str, project_name: str, include_comments: bool, 
                   analyze_business_logic: bool, generate_correlations: bool):
-    """Inicia a análise do projeto"""
+    """Inicia a análise do projeto usando prompts especializados para mapeamento de funcionalidades"""
     
     with st.spinner("🔄 Analisando projeto... Isso pode levar alguns minutos."):
         try:
-            # Configura parâmetros da análise
-            analysis_config = {
-                'project_name': project_name,
-                'include_comments': include_comments,
-                'analyze_business_logic': analyze_business_logic,
-                'generate_correlations': generate_correlations,
-                'output_detailed_logs': True
-            }
-            
             # Progress bar
             progress_bar = st.progress(0)
             status_text = st.empty()
             
-            # Etapa 1: Análise básica
-            status_text.text("📋 Analisando estrutura do projeto...")
-            progress_bar.progress(20)
+            # Etapa 1: Preparação e análise estrutural
+            status_text.text("📋 Preparando análise com mapeamento de funcionalidades...")
+            progress_bar.progress(10)
             
-            analysis_results = st.session_state.analyzer.analyze_project(
+            # Encontra e prepara arquivos para análise
+            uploaded_files = []
+            total_files = 0
+            
+            # Conta arquivos primeiro
+            for root, dirs, files in os.walk(project_path):
+                for file in files:
+                    if file.lower().endswith(('.pas', '.dfm', '.dpr')):
+                        total_files += 1
+            
+            if total_files == 0:
+                st.error("❌ Nenhum arquivo Delphi encontrado no diretório!")
+                return
+            
+            # Processa arquivos
+            processed_files = 0
+            for root, dirs, files in os.walk(project_path):
+                for file in files:
+                    if file.lower().endswith(('.pas', '.dfm', '.dpr')):
+                        file_path = os.path.join(root, file)
+                        try:
+                            with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
+                                content = f.read()
+                            
+                            if content.strip():  # Só adiciona se o arquivo não está vazio
+                                uploaded_files.append({
+                                    'name': file,
+                                    'path': file_path,
+                                    'content': content,
+                                    'type': file.split('.')[-1].lower()
+                                })
+                                processed_files += 1
+                        except Exception as e:
+                            st.warning(f"⚠️ Erro ao ler arquivo {file}: {e}")
+                            continue
+            
+            if not uploaded_files:
+                st.error("❌ Nenhum arquivo válido foi processado!")
+                return
+            
+            st.info(f"📁 Processados {processed_files} de {total_files} arquivos Delphi")
+            
+            # Etapa 2: Análise com prompts especializados
+            status_text.text("🧠 Executando análise com foco em funcionalidades...")
+            progress_bar.progress(30)
+            
+            # Usa novo método com prompts especializados
+            analysis_results = st.session_state.analyzer.analyze_project_with_prompts(
                 project_path, 
-                **analysis_config
+                uploaded_files
             )
             
-            # Etapa 2: Análise avançada
-            status_text.text("🧠 Extraindo lógica de negócio...")
-            progress_bar.progress(40)
+            # Etapa 3: Análise estrutural complementar
+            status_text.text("🏗️ Executando análise estrutural...")
+            progress_bar.progress(50)
             
-            if analyze_business_logic:
-                business_analysis = st.session_state.analyzer.extract_business_logic(
-                    analysis_results.get('units_analysis', {})
-                )
-                analysis_results['business_logic'] = business_analysis
+            # Combina com análise estrutural padrão para completar dados
+            structural_analysis = st.session_state.analyzer.analyze_project(
+                project_path,
+                project_name=project_name,
+                include_comments=include_comments,
+                analyze_business_logic=analyze_business_logic,
+                generate_correlations=generate_correlations,
+                output_detailed_logs=True
+            )
             
-            # Etapa 3: Geração de correlações
-            status_text.text("🔗 Gerando correlações...")
-            progress_bar.progress(60)
+            # Mescla resultados para ter dados completos
+            analysis_results.update(structural_analysis)
+            analysis_results['functional_mapping_enhanced'] = True
             
-            if generate_correlations:
-                correlations = st.session_state.analyzer.generate_delphi_java_correlations(
-                    analysis_results
-                )
-                analysis_results['correlations'] = correlations
+            # Etapa 4: Geração de documentação com mapeamento
+            status_text.text("📝 Gerando documentação com mapeamento de funcionalidades...")
+            progress_bar.progress(75)
             
-            # Etapa 4: Geração de documentação
-            status_text.text("📝 Gerando documentação...")
-            progress_bar.progress(80)
-            
-            generated_docs = st.session_state.doc_generator.generate_complete_documentation(
+            generated_docs = st.session_state.analyzer.generate_documentation_with_mapping(
                 analysis_results
             )
             
+            # Se não conseguiu gerar com prompt especializado, usa método padrão
+            if 'error' in generated_docs or not generated_docs.get('documentation'):
+                st.warning("⚠️ Usando método de documentação padrão como fallback...")
+                generated_docs = st.session_state.doc_generator.generate_complete_documentation(
+                    analysis_results
+                )
+            
             # Finalização
             progress_bar.progress(100)
-            status_text.text("✅ Análise concluída!")
+            status_text.text("✅ Análise com mapeamento de funcionalidades concluída!")
             
             # Salva resultados na sessão
             st.session_state.analysis_results = analysis_results
             st.session_state.generated_docs = generated_docs
             
             # Mostra resumo
+            st.success("🎉 Análise completada com mapeamento detalhado de funcionalidades!")
             show_analysis_summary(analysis_results, generated_docs)
             
+        except FileNotFoundError as e:
+            st.error(f"❌ Arquivo ou diretório não encontrado: {str(e)}")
+            logger.error(f"FileNotFoundError na análise: {str(e)}")
+        except PermissionError as e:
+            st.error(f"❌ Erro de permissão ao acessar arquivos: {str(e)}")
+            logger.error(f"PermissionError na análise: {str(e)}")
+        except zipfile.BadZipFile as e:
+            st.error(f"❌ Arquivo ZIP corrompido ou inválido: {str(e)}")
+            logger.error(f"BadZipFile na análise: {str(e)}")
         except Exception as e:
             st.error(f"❌ Erro durante análise: {str(e)}")
-            logger.error(f"Erro na análise: {str(e)}")
+            logger.error(f"Erro geral na análise: {str(e)}", exc_info=True)
+            # Fallback para método padrão em caso de erro
+            st.info("🔄 Tentando análise com método padrão...")
+            try:
+                # Análise básica como fallback
+                basic_analysis = st.session_state.analyzer.analyze_project(
+                    project_path,
+                    project_name=project_name or "Projeto_Delphi",
+                    include_comments=include_comments,
+                    analyze_business_logic=analyze_business_logic,
+                    generate_correlations=generate_correlations
+                )
+                
+                st.session_state.analysis_results = basic_analysis
+                st.success("✅ Análise básica completada como fallback!")
+                show_analysis_summary(basic_analysis, {})
+                
+            except Exception as fallback_error:
+                st.error(f"❌ Falha também na análise básica: {str(fallback_error)}")
+                logger.error(f"Erro no fallback: {str(fallback_error)}")
 
 def show_analysis_summary(analysis_results: Dict[str, Any], generated_docs: Dict[str, str]):
     """Mostra resumo da análise realizada"""

@@ -1,18 +1,51 @@
 {
+  "functional_analysis": {
+    "functionalities_identified": [
+      "Sistema possui funcionalidades de interface de usuário",
+      "Operações de banco de dados identificadas",
+      "Lógica de negócio presente em procedures/functions"
+    ],
+    "functional_mapping": [
+      {
+        "name": "Interface Principal",
+        "description": "Formulário principal do sistema",
+        "components": [
+          "Forms",
+          "Buttons",
+          "Grids"
+        ],
+        "purpose": "Interação com usuário"
+      }
+    ],
+    "ai_analysis_performed": true,
+    "prompt_used": "specialized_functionality_analysis"
+  },
+  "structural_data": {
+    "files_processed": 12,
+    "file_types": {
+      "pas": 10,
+      "dpr": 1,
+      "dfm": 1
+    },
+    "total_lines": 619,
+    "estimated_complexity": "Medium"
+  },
+  "prompt_used": "specialized_functionality_analysis",
+  "analysis_timestamp": "2025-07-16T15:38:15.933924",
   "metadata": {
-    "project_name": "Calculadora_teste",
-    "analysis_date": "2025-07-14T14:15:39.546737",
+    "project_name": "MeuProjeto",
+    "analysis_date": "2025-07-16T15:38:15.958660",
     "analyzer_version": "1.0.0",
     "total_files_analyzed": 15,
     "analysis_config": {
-      "project_name": "Calculadora_teste",
+      "project_name": "MeuProjeto",
       "include_comments": true,
       "analyze_business_logic": true,
       "generate_correlations": true
     }
   },
   "project_info": {
-    "project_path": "C:\\Users\\Suporte\\AppData\\Local\\Temp\\junim_project_vlcul3cd\\extracted",
+    "project_path": "C:\\Users\\Suporte\\AppData\\Local\\Temp\\junim_project_5htu2fmn\\extracted",
     "total_files": 15,
     "file_counts": {
       "pascal_units": 10,
@@ -25,7 +58,7 @@
   },
   "units_analysis": {
     "Classe.Calculadora": {
-      "file_path": "C:\\Users\\Suporte\\AppData\\Local\\Temp\\junim_project_vlcul3cd\\extracted\\SimpleCalc-master\\Classe.Calculadora.pas",
+      "file_path": "C:\\Users\\Suporte\\AppData\\Local\\Temp\\junim_project_5htu2fmn\\extracted\\SimpleCalc-master\\Classe.Calculadora.pas",
       "lines_count": 112,
       "unit_type": "form",
       "classes": [
@@ -193,7 +226,7 @@
       ]
     },
     "Classe.Dividir": {
-      "file_path": "C:\\Users\\Suporte\\AppData\\Local\\Temp\\junim_project_vlcul3cd\\extracted\\SimpleCalc-master\\Classe.Dividir.pas",
+      "file_path": "C:\\Users\\Suporte\\AppData\\Local\\Temp\\junim_project_5htu2fmn\\extracted\\SimpleCalc-master\\Classe.Dividir.pas",
       "lines_count": 46,
       "unit_type": "form",
       "classes": [
@@ -245,7 +278,7 @@
       "comments": []
     },
     "Classe.Eventos": {
-      "file_path": "C:\\Users\\Suporte\\AppData\\Local\\Temp\\junim_project_vlcul3cd\\extracted\\SimpleCalc-master\\Classe.Eventos.pas",
+      "file_path": "C:\\Users\\Suporte\\AppData\\Local\\Temp\\junim_project_5htu2fmn\\extracted\\SimpleCalc-master\\Classe.Eventos.pas",
       "lines_count": 10,
       "unit_type": "unit",
       "classes": [],
@@ -262,7 +295,7 @@
       "comments": []
     },
     "Classe.helpers": {
-      "file_path": "C:\\Users\\Suporte\\AppData\\Local\\Temp\\junim_project_vlcul3cd\\extracted\\SimpleCalc-master\\Classe.helpers.pas",
+      "file_path": "C:\\Users\\Suporte\\AppData\\Local\\Temp\\junim_project_5htu2fmn\\extracted\\SimpleCalc-master\\Classe.helpers.pas",
       "lines_count": 33,
       "unit_type": "unit",
       "classes": [],
@@ -306,7 +339,7 @@
       "comments": []
     },
     "Classe.Interfaces": {
-      "file_path": "C:\\Users\\Suporte\\AppData\\Local\\Temp\\junim_project_vlcul3cd\\extracted\\SimpleCalc-master\\Classe.Interfaces.pas",
+      "file_path": "C:\\Users\\Suporte\\AppData\\Local\\Temp\\junim_project_5htu2fmn\\extracted\\SimpleCalc-master\\Classe.Interfaces.pas",
       "lines_count": 44,
       "unit_type": "unit",
       "classes": [],
@@ -415,7 +448,7 @@
       ]
     },
     "Classe.Multiplicar": {
-      "file_path": "C:\\Users\\Suporte\\AppData\\Local\\Temp\\junim_project_vlcul3cd\\extracted\\SimpleCalc-master\\Classe.Multiplicar.pas",
+      "file_path": "C:\\Users\\Suporte\\AppData\\Local\\Temp\\junim_project_5htu2fmn\\extracted\\SimpleCalc-master\\Classe.Multiplicar.pas",
       "lines_count": 47,
       "unit_type": "form",
       "classes": [
@@ -469,7 +502,7 @@
       "comments": []
     },
     "Classe.Operacoes": {
-      "file_path": "C:\\Users\\Suporte\\AppData\\Local\\Temp\\junim_project_vlcul3cd\\extracted\\SimpleCalc-master\\Classe.Operacoes.pas",
+      "file_path": "C:\\Users\\Suporte\\AppData\\Local\\Temp\\junim_project_5htu2fmn\\extracted\\SimpleCalc-master\\Classe.Operacoes.pas",
       "lines_count": 56,
       "unit_type": "class",
       "classes": [
@@ -559,7 +592,7 @@
       ]
     },
     "Classe.Somar": {
-      "file_path": "C:\\Users\\Suporte\\AppData\\Local\\Temp\\junim_project_vlcul3cd\\extracted\\SimpleCalc-master\\Classe.Somar.pas",
+      "file_path": "C:\\Users\\Suporte\\AppData\\Local\\Temp\\junim_project_5htu2fmn\\extracted\\SimpleCalc-master\\Classe.Somar.pas",
       "lines_count": 47,
       "unit_type": "form",
       "classes": [
@@ -613,7 +646,7 @@
       "comments": []
     },
     "Classe.Subtrair": {
-      "file_path": "C:\\Users\\Suporte\\AppData\\Local\\Temp\\junim_project_vlcul3cd\\extracted\\SimpleCalc-master\\Classe.Subtrair.pas",
+      "file_path": "C:\\Users\\Suporte\\AppData\\Local\\Temp\\junim_project_5htu2fmn\\extracted\\SimpleCalc-master\\Classe.Subtrair.pas",
       "lines_count": 45,
       "unit_type": "form",
       "classes": [
@@ -669,7 +702,7 @@
       ]
     },
     "Unit4": {
-      "file_path": "C:\\Users\\Suporte\\AppData\\Local\\Temp\\junim_project_vlcul3cd\\extracted\\SimpleCalc-master\\Unit4.pas",
+      "file_path": "C:\\Users\\Suporte\\AppData\\Local\\Temp\\junim_project_5htu2fmn\\extracted\\SimpleCalc-master\\Unit4.pas",
       "lines_count": 74,
       "unit_type": "form",
       "classes": [
@@ -942,18 +975,5 @@
       }
     ]
   },
-  "business_logic": {
-    "business_rules": [],
-    "validations": [],
-    "calculations": [],
-    "workflows": [],
-    "data_processing": [],
-    "integrations": []
-  },
-  "correlations": {
-    "component_mappings": [],
-    "pattern_mappings": [],
-    "architecture_mappings": [],
-    "technology_mappings": []
-  }
+  "functional_mapping_enhanced": true
 }

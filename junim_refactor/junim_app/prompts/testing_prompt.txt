@@ -1,47 +1,21 @@
-# Prompt para geração de testes unitários
+# Prompt aprimorado para geração de testes automatizados
 
 ## OBJETIVO
-Criar suite completa de testes para garantir qualidade do código convertido.
+Criar uma suíte de testes completa e didática, baseada em funcionalidades reais, casos de uso e regras de negócio do sistema convertido.
+
+## INSTRUÇÕES
+- Para cada funcionalidade convertida:
+  - Explique em linguagem natural o que está sendo testado e por quê.
+  - Crie cenários de teste baseados em exemplos de uso reais do sistema (ex: "Usuário cadastra cliente com dados válidos", "Busca entidade inexistente retorna 404").
+  - Garanta cobertura de regras de negócio, fluxos alternativos e validações.
+  - Comente os testes explicando o objetivo de cada cenário.
+  - Utilize nomes de métodos e variáveis claros e autoexplicativos.
 
 ## TESTES DE CONTROLLER
 ```java
 @WebMvcTest(EntityController.class)
 class EntityControllerTest {
-    
-    @Autowired
-    private MockMvc mockMvc;
-    
-    @MockBean
-    private EntityService entityService;
-    
-    @Autowired
-    private ObjectMapper objectMapper;
-    
-    @Test
-    void shouldCreateEntity() throws Exception {
-        // Given
-        CreateEntityDTO dto = new CreateEntityDTO("Test Entity");
-        EntityDTO expected = new EntityDTO(1L, "Test Entity");
-        when(entityService.create(any(CreateEntityDTO.class))).thenReturn(expected);
-        
-        // When & Then
-        mockMvc.perform(post("/api/entities")
-                .contentType(MediaType.APPLICATION_JSON)
-                .content(objectMapper.writeValueAsString(dto)))
-                .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.id").value(1L))
-                .andExpect(jsonPath("$.name").value("Test Entity"));
-    }
-    
-    @Test
-    void shouldReturn404WhenEntityNotFound() throws Exception {
-        // Given
-        when(entityService.findById(999L)).thenThrow(new EntityNotFoundException());
-        
-        // When & Then
-        mockMvc.perform(get("/api/entities/999"))
-                .andExpect(status().isNotFound());
-    }
+    // ... testes baseados em casos de uso reais, com comentários didáticos
 }
 ```
 
@@ -49,15 +23,22 @@ class EntityControllerTest {
 ```java
 @ExtendWith(MockitoExtension.class)
 class EntityServiceTest {
-    
-    @Mock
-    private EntityRepository repository;
-    
-    @InjectMocks
-    private EntityService entityService;
-    
-    @Test
-    void shouldCreateEntity() {
+    // ... testes de regras de negócio, fluxos de sucesso e erro, com explicações
+}
+```
+
+## TESTES DE REPOSITORY
+```java
+@DataJpaTest
+class EntityRepositoryTest {
+    // ... testes de queries, relacionamentos e integridade dos dados
+}
+```
+
+## COBERTURA
+- Teste todas as operações principais, fluxos alternativos e regras de negócio
+- Inclua cenários de erro, validações e integrações
+- Comente cada teste para facilitar entendimento e manutenção
         // Given
         CreateEntityDTO dto = new CreateEntityDTO("Test");
         Entity entity = new Entity("Test");

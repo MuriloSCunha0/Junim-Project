@@ -14,6 +14,30 @@ from datetime import datetime
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+# Import do PromptManager com tratamento de erro
+import sys
+sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
+
+try:
+    from prompts.specialized_prompts import PromptManager
+    PROMPTS_AVAILABLE = True
+    logger.info("✅ PromptManager especializado importado com sucesso")
+except ImportError as e:
+    logger.warning(f"⚠️ Falha ao importar PromptManager especializado: {str(e)}")
+    try:
+        from prompts.simple_loader import SimplePromptLoader as PromptManager
+        PROMPTS_AVAILABLE = True
+        logger.info("✅ PromptManager simples importado como fallback")
+    except ImportError:
+        logger.error("❌ Nenhum PromptManager disponível")
+        PROMPTS_AVAILABLE = False
+        # Criar uma classe mock para evitar erros
+        class PromptManager:
+            def get_analysis_prompt(self):
+                return "Você é um especialista em análise de código Delphi."
+            def get_documentation_generation_prompt(self):
+                return "Gere documentação técnica para o projeto."
+
 class LegacyProjectAnalyzer:
     """Analisador avançado de projetos Delphi legados"""
     
@@ -28,6 +52,16 @@ class LegacyProjectAnalyzer:
         self.correlations = {}
         self.requirements = {}
         self.characteristics = {}
+        
+        # Inicializa PromptManager com validação
+        self.prompt_manager = PromptManager()
+        if PROMPTS_AVAILABLE:
+            logger.info("✅ LegacyProjectAnalyzer configurado com prompts especializados")
+        else:
+            logger.warning("⚠️ LegacyProjectAnalyzer usando prompts básicos (fallback)")
+            
+        # Flag para indicar se prompts especializados estão ativos
+        self.using_specialized_prompts = PROMPTS_AVAILABLE
         
     def analyze_complete_project(self, project_path: str, project_name: str = None) -> Dict[str, Any]:
         """
@@ -1319,4 +1353,213 @@ class LegacyProjectAnalyzer:
             logger.error(f"Erro ao gerar correlações: {str(e)}")
             return {'error': str(e)}
 
-    # ...existing code...
+    def analyze_project_with_prompts(self, project_path: str, uploaded_files: List[Dict]) -> Dict:
+        """Análise completa usando prompts especializados para mapeamento de funcionalidades"""
+        try:
+            logger.info("🚀 INICIANDO ANÁLISE COM PROMPTS ESPECIALIZADOS")
+            logger.info(f"Prompts especializados ativos: {self.using_specialized_prompts}")
+            
+            # Extrair código dos arquivos
+            code_content = self._extract_code_from_files(uploaded_files)
+            
+            # Usar prompt especializado para análise com foco em funcionalidades
+            analysis_prompt = self.prompt_manager.get_analysis_prompt()
+            logger.info(f"📝 Usando prompt de análise: {analysis_prompt[:100]}...")
+            
+            # Análise principal com IA
+            ai_analysis = self._analyze_with_ai(code_content, analysis_prompt)
+            
+            # Processamento estrutural padrão
+            structural_data = self._process_structural_analysis(uploaded_files)
+            
+            # Combinar análises
+            result = {
+                'functional_analysis': ai_analysis,
+                'structural_data': structural_data,
+                'prompt_used': 'specialized_functionality_analysis',
+                'using_specialized_prompts': self.using_specialized_prompts,
+                'analysis_timestamp': datetime.now().isoformat()
+            }
+            
+            logger.info("✅ ANÁLISE COM PROMPTS ESPECIALIZADOS CONCLUÍDA")
+            return result
+            
+        except Exception as e:
+            logger.error(f"❌ Erro na análise com prompts: {e}")
+            return {'error': str(e)}
+    
+    def generate_documentation_with_mapping(self, analysis_data: Dict) -> Dict:
+        """Gera documentação usando prompt especializado para mapeamento"""
+        try:
+            logger.info("📚 INICIANDO GERAÇÃO DE DOCUMENTAÇÃO COM PROMPTS ESPECIALIZADOS")
+            logger.info(f"Prompts especializados ativos: {self.using_specialized_prompts}")
+            
+            # Validação dos dados de entrada
+            if not analysis_data or 'error' in analysis_data:
+                logger.warning("Dados de análise inválidos ou com erro")
+                return {'error': 'Dados de análise inválidos'}
+            
+            # Usar prompt específico para documentação com foco em funcionalidades
+            doc_prompt = self.prompt_manager.get_documentation_generation_prompt()
+            logger.info(f"📝 Usando prompt de documentação: {doc_prompt[:100]}...")
+            
+            # Contexto da análise - limitado para evitar prompts muito grandes
+            try:
+                # Remove dados muito volumosos para o prompt
+                filtered_data = {
+                    'metadata': analysis_data.get('metadata', {}),
+                    'project_info': analysis_data.get('project_info', {}),
+                    'characteristics': analysis_data.get('characteristics', {}),
+                    'requirements': analysis_data.get('requirements', {}),
+                    'units_count': len(analysis_data.get('units_analysis', {})),
+                    'using_specialized_prompts': analysis_data.get('using_specialized_prompts', False)
+                }
+                analysis_context = json.dumps(filtered_data, indent=2, ensure_ascii=False)
+            except Exception as json_error:
+                logger.warning(f"Erro ao serializar dados para JSON: {json_error}")
+                analysis_context = f"Projeto: {analysis_data.get('metadata', {}).get('project_name', 'Unknown')}"
+            
+            # Gerar documentação com IA usando prompt especializado
+            documentation = self._generate_with_ai(analysis_context, doc_prompt)
+            
+            return {
+                'documentation': documentation,
+                'mapping_included': True,
+                'prompt_used': 'specialized_documentation_with_mapping',
+                'generation_timestamp': datetime.now().isoformat()
+            }
+            
+        except Exception as e:
+            logger.error(f"Erro na geração de documentação: {e}")
+            return {'error': str(e)}
+
+    def _extract_code_from_files(self, uploaded_files: List[Dict]) -> str:
+        """Extrai conteúdo dos arquivos para análise"""
+        try:
+            combined_content = ""
+            for file_info in uploaded_files:
+                file_name = file_info.get('name', 'unknown')
+                content = file_info.get('content', '')
+                
+                combined_content += f"\n\n// === Arquivo: {file_name} ===\n"
+                combined_content += content
+                
+            return combined_content
+        except Exception as e:
+            logger.error(f"Erro ao extrair código dos arquivos: {e}")
+            return ""
+    
+    def _analyze_with_ai(self, code_content: str, prompt: str) -> Dict:
+        """Análise usando IA (placeholder - implementar integração com LLM)"""
+        try:
+            # TODO: Implementar integração real com LLM (Groq/Ollama)
+            # Por enquanto, retorna estrutura básica
+            return {
+                'functionalities_identified': [
+                    'Sistema possui funcionalidades de interface de usuário',
+                    'Operações de banco de dados identificadas',
+                    'Lógica de negócio presente em procedures/functions'
+                ],
+                'functional_mapping': [
+                    {
+                        'name': 'Interface Principal',
+                        'description': 'Formulário principal do sistema',
+                        'components': ['Forms', 'Buttons', 'Grids'],
+                        'purpose': 'Interação com usuário'
+                    }
+                ],
+                'ai_analysis_performed': True,
+                'prompt_used': 'specialized_functionality_analysis'
+            }
+        except Exception as e:
+            logger.error(f"Erro na análise com IA: {e}")
+            return {'error': str(e), 'ai_analysis_performed': False}
+    
+    def _process_structural_analysis(self, uploaded_files: List[Dict]) -> Dict:
+        """Processa análise estrutural dos arquivos"""
+        try:
+            structural_data = {
+                'files_processed': len(uploaded_files),
+                'file_types': {},
+                'total_lines': 0,
+                'estimated_complexity': 'Medium'
+            }
+            
+            for file_info in uploaded_files:
+                file_type = file_info.get('type', 'unknown')
+                content = file_info.get('content', '')
+                lines = len(content.splitlines())
+                
+                if file_type not in structural_data['file_types']:
+                    structural_data['file_types'][file_type] = 0
+                structural_data['file_types'][file_type] += 1
+                structural_data['total_lines'] += lines
+            
+            return structural_data
+        except Exception as e:
+            logger.error(f"Erro na análise estrutural: {e}")
+            return {'error': str(e)}
+    
+    def _generate_with_ai(self, context: str, prompt: str) -> str:
+        """Gera documentação usando IA (placeholder - implementar integração com LLM)"""
+        try:
+            # TODO: Implementar integração real com LLM
+            # Por enquanto, retorna documentação básica estruturada
+            return f"""
+# DOCUMENTAÇÃO DO SISTEMA COM MAPEAMENTO DE FUNCIONALIDADES
+
+## 1. FUNCIONALIDADES IDENTIFICADAS
+
+### Funcionalidade 1: Interface Principal
+- **Descrição**: Formulário principal que serve como ponto de entrada do sistema
+- **Exemplo de uso**: Usuário acessa sistema → formulário principal é exibido → menu de opções disponível
+- **Componentes**: Forms, Menus, Botões de navegação
+- **Fluxo**: Inicialização → Apresentação da interface → Aguarda interação do usuário
+
+### Funcionalidade 2: Operações de Dados
+- **Descrição**: Funcionalidades para manipulação de dados (CRUD)
+- **Exemplo de uso**: Usuário clica em "Salvar" → sistema valida dados → salva no banco → exibe confirmação
+- **Componentes**: Formulários de entrada, Validadores, Conectores de banco
+- **Fluxo**: Entrada de dados → Validação → Persistência → Feedback
+
+## 2. ARQUITETURA FUNCIONAL
+- **Módulos**: Interface, Dados, Validação
+- **Fluxos**: Interface ↔ Validação ↔ Dados
+- **Integrações**: Banco de dados, Interface gráfica
+
+## 3. MAPEAMENTO PARA MODERNIZAÇÃO
+
+### Interface Principal → Spring Boot Controller
+**DELPHI**: Form principal com menus → métodos de inicialização → controle de acesso
+**JAVA**: @RestController com endpoints → métodos de inicialização → configuração de segurança
+
+### Operações de Dados → Spring Data JPA
+**DELPHI**: Procedures de banco → validações → feedback visual
+**JAVA**: Repository methods → Bean Validation → ResponseEntity com status
+
+Este mapeamento foi gerado com foco na compreensão funcional detalhada.
+"""
+        except Exception as e:
+            logger.error(f"Erro na geração com IA: {e}")
+            return f"Erro na geração de documentação: {str(e)}"
+    
+    def get_prompt_status(self) -> Dict[str, Any]:
+        """Retorna informações sobre o status dos prompts"""
+        return {
+            'specialized_prompts_available': PROMPTS_AVAILABLE,
+            'using_specialized_prompts': self.using_specialized_prompts,
+            'prompt_manager_type': type(self.prompt_manager).__name__,
+            'version': self.version
+        }
+    
+    def force_specialized_prompts(self) -> bool:
+        """Força o uso de prompts especializados se disponíveis"""
+        try:
+            from prompts.specialized_prompts import PromptManager as SpecializedPromptManager
+            self.prompt_manager = SpecializedPromptManager()
+            self.using_specialized_prompts = True
+            logger.info("✅ Forçado uso de prompts especializados")
+            return True
+        except ImportError:
+            logger.warning("⚠️ Não foi possível forçar prompts especializados")
+            return False

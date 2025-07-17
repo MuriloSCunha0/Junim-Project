@@ -1,4 +1,4 @@
-# Correlações Delphi → Java Spring - Calculadora_teste
+# Correlações Delphi → Java Spring - MeuProjeto
 
 ## Introdução
 

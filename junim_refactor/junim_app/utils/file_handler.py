@@ -31,17 +31,51 @@ class FileHandler:
             Caminho do diretório onde foi extraído
         """
         try:
+            # Validação crítica: verifica se zip_path não é None
+            if zip_path is None:
+                raise ValueError("Caminho do arquivo ZIP não pode ser None")
+            
+            # Converte para string se necessário
+            zip_path = str(zip_path)
+            
+            # Validação básica do arquivo
+            if not zip_path:
+                raise ValueError("Caminho do arquivo ZIP está vazio")
+            
+            if not os.path.exists(zip_path):
+                raise FileNotFoundError(f"Arquivo ZIP não encontrado: {zip_path}")
+            
+            if os.path.getsize(zip_path) == 0:
+                raise Exception("Arquivo ZIP está vazio")
+            
+            # Verifica se é um arquivo ZIP válido
+            if not zipfile.is_zipfile(zip_path):
+                raise zipfile.BadZipFile(f"Arquivo não é um ZIP válido: {zip_path}")
+            
             # Cria diretório temporário
             temp_dir = tempfile.mkdtemp(prefix='junim_delphi_')
             self.temp_dirs.append(temp_dir)
             
             # Extrai o arquivo
             with zipfile.ZipFile(zip_path, 'r') as zip_ref:
+                # Verifica se o ZIP não está vazio
+                if not zip_ref.namelist():
+                    raise Exception("Arquivo ZIP não contém nenhum arquivo")
+                
                 zip_ref.extractall(temp_dir)
             
             logger.info(f"Projeto extraído em: {temp_dir}")
             return temp_dir
             
+        except zipfile.BadZipFile as e:
+            logger.error(f"Arquivo ZIP inválido: {str(e)}")
+            raise Exception(f"Falha ao extrair arquivo ZIP: Arquivo ZIP corrompido ou inválido")
+        except FileNotFoundError as e:
+            logger.error(f"Arquivo não encontrado: {str(e)}")
+            raise Exception(f"Falha ao extrair arquivo ZIP: Arquivo não encontrado")
+        except ValueError as e:
+            logger.error(f"Valor inválido: {str(e)}")
+            raise Exception(f"Falha ao extrair arquivo ZIP: {str(e)}")
         except Exception as e:
             logger.error(f"Erro ao extrair ZIP: {str(e)}")
             raise Exception(f"Falha ao extrair arquivo ZIP: {str(e)}")

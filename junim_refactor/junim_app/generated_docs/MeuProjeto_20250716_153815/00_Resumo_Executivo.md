@@ -45,5 +45,5 @@ Este documento apresenta um resumo executivo da análise realizada no sistema le
 
 ---
 
-**Data da Análise**: 2025-07-14T13:18:09.291393
+**Data da Análise**: 2025-07-16T15:38:15.958660
 **Ferramenta**: JUNIM - Java Unified Interoperability Migration v1.0.0

@@ -172,6 +172,7 @@ class JUNIMInterface:
         with col1:
             project_name = analysis.get('metadata', {}).get('project_name', 'Projeto')
             st.metric("Projeto", project_name)
+            st.info("Análise de projeto carregada e pronta para modernização")
         
         with col2:
             units_count = len(analysis.get('units_analysis', {}))
@@ -236,6 +237,29 @@ class JUNIMInterface:
         """Renderiza configurações da modernização"""
         st.subheader("⚙️ Configurações da Modernização")
         
+        # Verificação de prompts
+        with st.expander("🤖 Status dos Prompts Personalizados"):
+            try:
+                from prompts.specialized_prompts import PromptManager, prompt_manager
+                st.success("✅ **Seus prompts personalizados estão ativos!**")
+                st.info("""
+                **Prompts sendo utilizados:**
+                - 🧠 Análise de funcionalidades
+                - 🔄 Modernização de código
+                - 📝 Geração de documentação
+                - 🧪 Criação de testes
+                """)
+                
+                # Mostra alguns detalhes dos prompts
+                st.markdown("**Exemplo de prompt personalizado carregado:**")
+                analysis_prompt = prompt_manager.get_analysis_prompt()
+                st.code(analysis_prompt[:200] + "..." if len(analysis_prompt) > 200 else analysis_prompt, language="text")
+                
+            except ImportError as e:
+                st.warning("⚠️ **Prompts padrão em uso**")
+                st.error(f"Erro ao carregar prompts personalizados: {str(e)}")
+                st.info("Para usar seus prompts personalizados, verifique se o arquivo `prompts/specialized_prompts.py` está configurado corretamente.")
+        
         col1, col2 = st.columns(2)
         
         with col1:
@@ -273,105 +297,102 @@ class JUNIMInterface:
         }
     
     def _run_documentation_enhanced_modernization(self):
-        """Executa modernização usando documentação gerada"""
-        
-        with st.spinner("🔄 Iniciando modernização com documentação..."):
+        """Executa modernização, gera e salva projeto Java completo (código, docs, testes) em 'generated_project', com preview detalhado."""
+        import shutil
+        with st.spinner("🔄 Gerando e salvando projeto Java modernizado..."):
             try:
-                # Carrega configurações
                 config = getattr(st.session_state, 'modernization_config', {})
-                
-                # Inicializa pipeline com configurações
                 pipeline_config = st.session_state.config.copy()
                 pipeline_config.update(config)
+                
+                # Debug da configuração
+                logger.info(f"Configuração do pipeline: {pipeline_config}")
+                logger.info(f"API Groq: {'Configurada' if pipeline_config.get('groq_api_key') else 'Não configurada'}")
+                
                 self.pipeline = ModernizationPipeline(pipeline_config)
                 
-                # Importa PromptManager
+                # FORÇA o uso dos prompts especializados
+                prompt_manager_loaded = False
                 try:
                     from prompts.specialized_prompts import prompt_manager
-                except ImportError:
-                    # Fallback para prompts simples
-                    from prompts.simple_loader import simple_prompt_loader as prompt_manager
+                    self.pipeline.set_prompt_manager(prompt_manager)
+                    prompt_manager_loaded = True
+                    logger.info("✅ Prompts especializados FORÇADOS no pipeline")
+                    st.info("🤖 **Usando seus prompts personalizados para modernização!**")
+                except ImportError as e:
+                    logger.error(f"❌ Falha ao carregar prompts especializados: {str(e)}")
+                    try:
+                        from prompts.simple_loader import simple_prompt_loader as prompt_manager
+                        self.pipeline.set_prompt_manager(prompt_manager)
+                        st.warning("⚠️ **Usando prompts padrão como fallback**")
+                    except ImportError:
+                        st.error("❌ **Nenhum sistema de prompts disponível!**")
+                        return
                 
-                # Configura pipeline com dados de análise
-                self.pipeline.set_prompt_manager(prompt_manager)
+                # Validação adicional
+                if not hasattr(self.pipeline, 'prompt_manager') or self.pipeline.prompt_manager is None:
+                    st.error("❌ **Erro crítico: Pipeline sem prompts configurados!**")
+                    return
                 self.pipeline.set_analysis_data(
                     st.session_state.analysis_results,
                     st.session_state.generated_docs
                 )
-                
-                # Progress bar
                 progress_bar = st.progress(0)
                 status_text = st.empty()
-                
-                # Callback para progresso
                 def update_progress(step, total_steps, message):
                     progress = step / total_steps
                     progress_bar.progress(progress)
                     status_text.text(f"Passo {step}/{total_steps}: {message}")
-                
-                # Etapa 1: Preparação
+                # Executa pipeline real e salva projeto em 'generated_project'
+                # Executa modernização usando dados de análise prévia
                 status_text.text("📋 Preparando modernização...")
-                progress_bar.progress(20)
-                
-                # Como não temos projeto físico, simula modernização baseada na documentação
-                # Esta é uma implementação de demonstração
-                
-                # Etapa 2: Análise com documentação
-                status_text.text("📖 Processando documentação...")
-                progress_bar.progress(40)
-                
-                # Cria prompt enriquecido com documentação
+                progress_bar.progress(10)
+                java_project_path = self.pipeline.run(
+                    progress_callback=lambda s, t, m: update_progress(s, t, m)
+                )
+                # Copia tudo para 'generated_project'
+                target_dir = os.path.abspath(os.path.join(os.getcwd(), 'generated_project'))
+                if os.path.exists(target_dir):
+                    shutil.rmtree(target_dir)
+                shutil.copytree(java_project_path, target_dir)
+                # Copia documentação gerada
+                docs_dir = os.path.abspath(os.path.join(os.getcwd(), 'generated_docs'))
+                if os.path.exists(docs_dir):
+                    shutil.copytree(docs_dir, os.path.join(target_dir, 'documentacao'))
+                status_text.text("✅ Projeto Java modernizado salvo em 'generated_project'!")
+                progress_bar.progress(100)
+                st.success(f"🎉 Projeto Java modernizado salvo em: {target_dir}")
+                # Preview detalhado
                 enhanced_prompt = prompt_manager.get_documentation_enhanced_prompt(
                     analysis_results=st.session_state.analysis_results,
                     generated_docs=st.session_state.generated_docs
                 )
-                
-                # Etapa 3: Geração de código (simulada)
-                status_text.text("⚙️ Gerando código Java Spring...")
-                progress_bar.progress(60)
-                
-                # Etapa 4: Aplicação de prompts especializados
-                if config.get('use_specialized_prompts', True):
-                    status_text.text("🎯 Aplicando prompts especializados...")
-                    progress_bar.progress(80)
-                
-                # Etapa 5: Finalização
-                status_text.text("✅ Modernização concluída!")
-                progress_bar.progress(100)
-                
-                st.success("🎉 **Modernização baseada em documentação concluída!**")
-                st.info("💡 **Demo Mode**: Esta é uma demonstração da funcionalidade. O código Java seria gerado aqui.")
-                
-                # Mostra resumo do que seria gerado
                 self._show_modernization_preview(enhanced_prompt)
-                
                 # Salva no histórico
                 if 'modernization_history' not in st.session_state:
                     st.session_state.modernization_history = []
-                
                 st.session_state.modernization_history.append({
                     'timestamp': datetime.now().isoformat(),
                     'type': 'documentation_enhanced',
                     'config': config,
                     'project_name': st.session_state.analysis_results.get('metadata', {}).get('project_name', 'Unknown')
                 })
-                
             except Exception as e:
                 st.error(f"❌ Erro durante modernização: {str(e)}")
                 logger.error(f"Erro na modernização com documentação: {str(e)}")
     
     def _show_modernization_preview(self, enhanced_prompt: str):
-        """Mostra preview do que seria gerado na modernização"""
-        
+        """Mostra preview do que seria gerado na modernização, incluindo testes automatizados."""
         st.subheader("👀 Preview da Modernização")
-        
+
         # Tabs para diferentes aspectos
-        preview_tab1, preview_tab2, preview_tab3 = st.tabs([
-            "📝 Prompt Gerado", 
-            "🏗️ Estrutura Planejada", 
+        preview_tab1, preview_tab2, preview_tab3, preview_tab4 = st.tabs([
+            "📝 Prompt Gerado",
+            "🏗️ Estrutura Planejada",
+            "🧪 Testes Automatizados",
             "📊 Métricas"
         ])
-        
+
         with preview_tab1:
             st.markdown("**Prompt enriquecido com documentação:**")
             st.text_area(
@@ -380,7 +401,7 @@ class JUNIMInterface:
                 height=300,
                 disabled=True
             )
-        
+
         with preview_tab2:
             st.markdown("**Estrutura Java Spring que seria gerada:**")
             st.code("""
@@ -407,22 +428,59 @@ src/main/java/com/projeto/
     ├── GlobalExceptionHandler.java
     └── BusinessException.java
             """, language="text")
-        
+
         with preview_tab3:
+            st.markdown("**Exemplo de Testes Automatizados Gerados:**")
+            # Exemplo didático baseado no novo prompt de testes
+            st.code(
+                """
+@WebMvcTest(CustomerController.class)
+class CustomerControllerTest {
+    // Teste: Usuário cadastra cliente com dados válidos
+    @Test
+    void deveCadastrarClienteComSucesso() throws Exception {
+        // ... implementação do teste
+    }
+
+    // Teste: Busca cliente inexistente retorna 404
+    @Test
+    void deveRetornar404ParaClienteInexistente() throws Exception {
+        // ... implementação do teste
+    }
+}
+
+@ExtendWith(MockitoExtension.class)
+class CustomerServiceTest {
+    // Teste: Regra de negócio - nome obrigatório
+    @Test
+    void deveLancarExcecaoSeNomeVazio() {
+        // ... implementação do teste
+    }
+}
+
+@DataJpaTest
+class CustomerRepositoryTest {
+    // Teste: Consulta clientes ativos
+    @Test
+    void deveBuscarClientesAtivos() {
+        // ... implementação do teste
+    }
+}
+                """,
+                language="java"
+            )
+
+        with preview_tab4:
             analysis = st.session_state.analysis_results
-            
             col1, col2, col3 = st.columns(3)
-            
             with col1:
                 units_count = len(analysis.get('units_analysis', {}))
                 estimated_classes = units_count * 2  # Estimativa
                 st.metric("Classes Java Estimadas", estimated_classes)
-            
             with col2:
                 total_lines = sum(unit.get('lines_count', 0) for unit in analysis.get('units_analysis', {}).values())
                 estimated_java_lines = int(total_lines * 1.3)  # Estimativa
                 st.metric("Linhas Java Estimadas", f"{estimated_java_lines:,}")
-            
             with col3:
                 config = getattr(st.session_state, 'modernization_config', {})
                 features = sum([
@@ -537,6 +595,16 @@ src/main/java/com/projeto/
     def _run_modernization(self, uploaded_file):
         """Executa o pipeline de modernização"""
         try:
+            # Validação do arquivo
+            if uploaded_file is None:
+                st.error("❌ Arquivo não encontrado. Por favor, faça o upload novamente.")
+                return
+            
+            # Verifica se o arquivo tem os métodos necessários
+            if not hasattr(uploaded_file, 'getvalue') and not hasattr(uploaded_file, 'getbuffer'):
+                st.error("❌ Arquivo inválido. Por favor, faça o upload de um arquivo ZIP válido.")
+                return
+            
             # Carrega configurações da modernização
             config = getattr(st.session_state, 'modernization_config', {})
             
@@ -563,38 +631,85 @@ src/main/java/com/projeto/
                 
                 # Cria arquivo temporário para o upload
                 with tempfile.NamedTemporaryFile(delete=False, suffix='.zip') as tmp_file:
-                    tmp_file.write(uploaded_file.getvalue())
-                    temp_path = tmp_file.name
+                    try:
+                        # Tenta usar getvalue() primeiro, depois getbuffer()
+                        if hasattr(uploaded_file, 'getvalue'):
+                            file_content = uploaded_file.getvalue()
+                        elif hasattr(uploaded_file, 'getbuffer'):
+                            uploaded_file.seek(0)  # Garante que está no início
+                            file_content = uploaded_file.getbuffer()
+                        else:
+                            raise Exception("Método de leitura do arquivo não suportado")
+                        
+                        if len(file_content) == 0:
+                            st.error("❌ Arquivo está vazio. Por favor, selecione um arquivo válido.")
+                            return
+                        
+                        tmp_file.write(file_content)
+                        temp_path = tmp_file.name
+                        
+                        # Valida se o arquivo foi criado corretamente
+                        if not os.path.exists(temp_path) or os.path.getsize(temp_path) == 0:
+                            st.error("❌ Erro ao criar arquivo temporário.")
+                            return
+                        
+                    except Exception as file_error:
+                        st.error(f"❌ Erro ao processar arquivo: {str(file_error)}")
+                        logger.error(f"Erro ao processar arquivo no pipeline: {str(file_error)}")
+                        return
                 
                 try:
-                    # Importa PromptManager se usar prompts especializados
+                    # FORÇA o uso de prompts especializados
                     if config.get('use_specialized_prompts', True):
                         try:
                             from prompts.specialized_prompts import prompt_manager
-                            update_progress(1, 8, "Carregando prompts especializados...")
-                            # Configura prompts no pipeline
+                            update_progress(1, 8, "✅ Carregando SEUS prompts especializados...")
                             self.pipeline.set_prompt_manager(prompt_manager)
-                        except ImportError:
-                            # Fallback para prompts simples
-                            from prompts.simple_loader import simple_prompt_loader
-                            update_progress(1, 8, "Carregando prompts simples...")
-                            self.pipeline.set_prompt_manager(simple_prompt_loader)
+                            logger.info("✅ Prompts especializados configurados com sucesso")
+                        except ImportError as e:
+                            logger.warning(f"⚠️ Falha ao importar prompts especializados: {str(e)}")
+                            try:
+                                from prompts.simple_loader import simple_prompt_loader
+                                update_progress(1, 8, "⚠️ Carregando prompts padrão...")
+                                self.pipeline.set_prompt_manager(simple_prompt_loader)
+                            except ImportError:
+                                st.error("❌ Nenhum sistema de prompts disponível!")
+                                return
+                    else:
+                        st.info("ℹ️ Prompts especializados desabilitados pelo usuário")
                     
-                    # Se há análise prévia, carrega os dados
+                    # Validação crítica
+                    if not hasattr(self.pipeline, 'prompt_manager') or self.pipeline.prompt_manager is None:
+                        st.error("❌ **ERRO: Pipeline sem prompts! Interrompendo processo.**")
+                        return
+                    
+                    # Se há análise prévia, carrega os dados e não passa caminho do projeto
                     if self._has_analyzed_project():
                         update_progress(2, 8, "Carregando dados de análise prévia...")
                         self.pipeline.set_analysis_data(
                             st.session_state.analysis_results,
                             st.session_state.generated_docs
                         )
-                    
-                    update_progress(3, 8, "Analisando projeto Delphi...")
-                    
-                    # Executa o pipeline
-                    result_path = self.pipeline.run(
-                        delphi_project_path=temp_path,
-                        progress_callback=lambda s, t, m: update_progress(s + 3, 8, m)
-                    )
+                        
+                        # Executa o pipeline sem passar o caminho do projeto
+                        logger.info("Executando pipeline com dados de análise prévia")
+                        result_path = self.pipeline.run(
+                            delphi_project_path=None,  # Não passa caminho para usar análise prévia
+                            progress_callback=lambda s, t, m: update_progress(s + 3, 8, m)
+                        )
+                    else:
+                        # Valida o arquivo antes de passar para o pipeline
+                        if not temp_path or not os.path.exists(temp_path):
+                            st.error("❌ Arquivo temporário não encontrado.")
+                            return
+                        
+                        logger.info(f"Executando pipeline com arquivo: {temp_path}")
+                        
+                        # Executa o pipeline com o arquivo
+                        result_path = self.pipeline.run(
+                            delphi_project_path=temp_path,
+                            progress_callback=lambda s, t, m: update_progress(s + 3, 8, m)
+                        )
                     
                     # Sucesso - oferece download
                     progress_bar.progress(1.0)
@@ -679,4 +794,3 @@ def add_custom_css():
     </style>
     """, unsafe_allow_html=True)
 
-# Não aplica CSS na inicialização - será aplicado na execução da interface
