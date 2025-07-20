@@ -1,104 +1,319 @@
-# Prompt aprimorado para geração de testes automatizados
+# Prompt Específico para Geração de Testes Automatizados
 
 ## OBJETIVO
-Criar uma suíte de testes completa e didática, baseada em funcionalidades reais, casos de uso e regras de negócio do sistema convertido.
+Criar uma suíte de testes completa e didática, baseada em funcionalidades REAIS, casos de uso ESPECÍFICOS e regras de negócio do sistema convertido do Delphi.
 
-## INSTRUÇÕES
-- Para cada funcionalidade convertida:
-  - Explique em linguagem natural o que está sendo testado e por quê.
-  - Crie cenários de teste baseados em exemplos de uso reais do sistema (ex: "Usuário cadastra cliente com dados válidos", "Busca entidade inexistente retorna 404").
-  - Garanta cobertura de regras de negócio, fluxos alternativos e validações.
-  - Comente os testes explicando o objetivo de cada cenário.
-  - Utilize nomes de métodos e variáveis claros e autoexplicativos.
+## PROTOCOLO DE CRIAÇÃO DE TESTES ESPECÍFICOS
 
-## TESTES DE CONTROLLER
+### 1. ANÁLISE OBRIGATÓRIA DO CÓDIGO CONVERTIDO
+Para cada funcionalidade convertida do Delphi:
+- **Operações CRUD**: Que operações foram implementadas
+- **Validações**: Que validações foram convertidas
+- **Regras de negócio**: Que lógica de negócio foi implementada
+- **Cenários de erro**: Que erros podem ocorrer
+- **Fluxos alternativos**: Que caminhos alternativos existem
+
+### 2. TESTES DE CONTROLLER ESPECÍFICOS
 ```java
-@WebMvcTest(EntityController.class)
-class EntityControllerTest {
-    // ... testes baseados em casos de uso reais, com comentários didáticos
-}
-```
-
-## TESTES DE SERVICE
-```java
-@ExtendWith(MockitoExtension.class)
-class EntityServiceTest {
-    // ... testes de regras de negócio, fluxos de sucesso e erro, com explicações
-}
-```
-
-## TESTES DE REPOSITORY
-```java
-@DataJpaTest
-class EntityRepositoryTest {
-    // ... testes de queries, relacionamentos e integridade dos dados
-}
-```
-
-## COBERTURA
-- Teste todas as operações principais, fluxos alternativos e regras de negócio
-- Inclua cenários de erro, validações e integrações
-- Comente cada teste para facilitar entendimento e manutenção
-        // Given
-        CreateEntityDTO dto = new CreateEntityDTO("Test");
-        Entity entity = new Entity("Test");
-        Entity saved = new Entity(1L, "Test");
+@WebMvcTest(ClienteController.class)
+class ClienteControllerTest {
+    
+    @Autowired
+    private MockMvc mockMvc;
+    
+    @MockBean
+    private ClienteService clienteService;
+    
+    @Test
+    @DisplayName("Deve criar cliente com dados válidos")
+    void deveCriarClienteComDadosValidos() throws Exception {
+        // Given - Dados baseados em campos do form Delphi
+        ClienteCreateDTO dto = new ClienteCreateDTO();
+        dto.setNome("João Silva");
+        dto.setCpf("12345678901");
+        dto.setEmail("joao@email.com");
         
-        when(repository.save(any(Entity.class))).thenReturn(saved);
+        ClienteDTO clienteEsperado = new ClienteDTO();
+        clienteEsperado.setId(1L);
+        clienteEsperado.setNome("João Silva");
+        clienteEsperado.setCpf("12345678901");
+        clienteEsperado.setEmail("joao@email.com");
         
-        // When
-        EntityDTO result = entityService.create(dto);
+        when(clienteService.criar(any(ClienteCreateDTO.class))).thenReturn(clienteEsperado);
         
-        // Then
-        assertThat(result.getId()).isEqualTo(1L);
-        assertThat(result.getName()).isEqualTo("Test");
-        verify(repository).save(any(Entity.class));
+        // When & Then
+        mockMvc.perform(post("/api/clientes")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(dto)))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.id").value(1L))
+                .andExpect(jsonPath("$.nome").value("João Silva"))
+                .andExpect(jsonPath("$.cpf").value("12345678901"))
+                .andExpect(jsonPath("$.email").value("joao@email.com"));
+        
+        verify(clienteService).criar(any(ClienteCreateDTO.class));
     }
     
     @Test
-    void shouldThrowExceptionWhenBusinessRuleViolated() {
-        // Given
-        CreateEntityDTO invalidDto = new CreateEntityDTO("");
+    @DisplayName("Deve retornar erro 400 ao criar cliente com nome vazio")
+    void deveRetornarErroPorNomeVazio() throws Exception {
+        // Given - Teste baseado em validação Delphi
+        ClienteCreateDTO dto = new ClienteCreateDTO();
+        dto.setNome(""); // Nome vazio
+        dto.setCpf("12345678901");
+        dto.setEmail("joao@email.com");
         
         // When & Then
-        assertThrows(BusinessException.class, () -> entityService.create(invalidDto));
+        mockMvc.perform(post("/api/clientes")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(dto)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errors").isArray())
+                .andExpect(jsonPath("$.errors[0]").value("nome: Nome é obrigatório"));
+    }
+    
+    @Test
+    @DisplayName("Deve buscar cliente por ID existente")
+    void deveBuscarClientePorIdExistente() throws Exception {
+        // Given
+        Long clienteId = 1L;
+        ClienteDTO clienteEsperado = new ClienteDTO();
+        clienteEsperado.setId(clienteId);
+        clienteEsperado.setNome("João Silva");
+        
+        when(clienteService.buscarPorId(clienteId)).thenReturn(clienteEsperado);
+        
+        // When & Then
+        mockMvc.perform(get("/api/clientes/{id}", clienteId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(clienteId))
+                .andExpect(jsonPath("$.nome").value("João Silva"));
+        
+        verify(clienteService).buscarPorId(clienteId);
+    }
+    
+    @Test
+    @DisplayName("Deve retornar erro 404 ao buscar cliente inexistente")
+    void deveRetornarErroPorClienteInexistente() throws Exception {
+        // Given
+        Long clienteId = 999L;
+        when(clienteService.buscarPorId(clienteId))
+                .thenThrow(new EntityNotFoundException("Cliente não encontrado: " + clienteId));
+        
+        // When & Then
+        mockMvc.perform(get("/api/clientes/{id}", clienteId))
+                .andExpect(status().isNotFound());
+        
+        verify(clienteService).buscarPorId(clienteId);
     }
 }
 ```
 
-## TESTES DE REPOSITORY
+### 3. TESTES DE SERVICE ESPECÍFICOS
+```java
+@ExtendWith(MockitoExtension.class)
+class ClienteServiceTest {
+    
+    @Mock
+    private ClienteRepository clienteRepository;
+    
+    @InjectMocks
+    private ClienteService clienteService;
+    
+    @Test
+    @DisplayName("Deve criar cliente com dados válidos")
+    void deveCriarClienteComDadosValidos() {
+        // Given
+        ClienteCreateDTO dto = new ClienteCreateDTO();
+        dto.setNome("João Silva");
+        dto.setCpf("12345678901");
+        dto.setEmail("joao@email.com");
+        
+        Cliente clienteParaSalvar = new Cliente();
+        clienteParaSalvar.setNome("João Silva");
+        clienteParaSalvar.setCpf("12345678901");
+        clienteParaSalvar.setEmail("joao@email.com");
+        
+        Cliente clienteSalvo = new Cliente();
+        clienteSalvo.setId(1L);
+        clienteSalvo.setNome("João Silva");
+        clienteSalvo.setCpf("12345678901");
+        clienteSalvo.setEmail("joao@email.com");
+        
+        when(clienteRepository.existsByNome("João Silva")).thenReturn(false);
+        when(clienteRepository.save(any(Cliente.class))).thenReturn(clienteSalvo);
+        
+        // When
+        ClienteDTO resultado = clienteService.criar(dto);
+        
+        // Then
+        assertThat(resultado.getId()).isEqualTo(1L);
+        assertThat(resultado.getNome()).isEqualTo("João Silva");
+        assertThat(resultado.getCpf()).isEqualTo("12345678901");
+        assertThat(resultado.getEmail()).isEqualTo("joao@email.com");
+        
+        verify(clienteRepository).existsByNome("João Silva");
+        verify(clienteRepository).save(any(Cliente.class));
+    }
+    
+    @Test
+    @DisplayName("Deve lançar exceção ao criar cliente com nome duplicado")
+    void deveLancarExcecaoParaNomeDuplicado() {
+        // Given - Teste baseado em validação Delphi
+        ClienteCreateDTO dto = new ClienteCreateDTO();
+        dto.setNome("João Silva");
+        dto.setCpf("12345678901");
+        dto.setEmail("joao@email.com");
+        
+        when(clienteRepository.existsByNome("João Silva")).thenReturn(true);
+        
+        // When & Then
+        BusinessException exception = assertThrows(BusinessException.class, () -> {
+            clienteService.criar(dto);
+        });
+        
+        assertThat(exception.getMessage()).isEqualTo("Nome já existe");
+        verify(clienteRepository).existsByNome("João Silva");
+        verify(clienteRepository, never()).save(any(Cliente.class));
+    }
+    
+    @Test
+    @DisplayName("Deve validar CPF inválido")
+    void deveValidarCpfInvalido() {
+        // Given - Teste baseado em validação CPF do Delphi
+        ClienteCreateDTO dto = new ClienteCreateDTO();
+        dto.setNome("João Silva");
+        dto.setCpf("123"); // CPF inválido
+        dto.setEmail("joao@email.com");
+        
+        // When & Then
+        BusinessException exception = assertThrows(BusinessException.class, () -> {
+            clienteService.criar(dto);
+        });
+        
+        assertThat(exception.getMessage()).isEqualTo("CPF inválido");
+        verify(clienteRepository, never()).save(any(Cliente.class));
+    }
+}
+```
+
+### 4. TESTES DE REPOSITORY ESPECÍFICOS
 ```java
 @DataJpaTest
-class EntityRepositoryTest {
+class ClienteRepositoryTest {
     
     @Autowired
     private TestEntityManager entityManager;
     
     @Autowired
-    private EntityRepository repository;
+    private ClienteRepository clienteRepository;
     
     @Test
-    void shouldFindByActiveTrue() {
-        // Given
-        Entity active = new Entity("Active", true);
-        Entity inactive = new Entity("Inactive", false);
-        entityManager.persistAndFlush(active);
-        entityManager.persistAndFlush(inactive);
+    @DisplayName("Deve verificar se cliente existe por nome")
+    void deveVerificarSeClienteExistePorNome() {
+        // Given - Teste baseado em consulta do Delphi
+        Cliente cliente = new Cliente();
+        cliente.setNome("João Silva");
+        cliente.setCpf("12345678901");
+        cliente.setEmail("joao@email.com");
+        
+        entityManager.persistAndFlush(cliente);
         
         // When
-        List<Entity> result = repository.findByActiveTrue();
+        boolean existe = clienteRepository.existsByNome("João Silva");
+        boolean naoExiste = clienteRepository.existsByNome("Maria Santos");
         
         // Then
-        assertThat(result).hasSize(1);
-        assertThat(result.get(0).getName()).isEqualTo("Active");
+        assertThat(existe).isTrue();
+        assertThat(naoExiste).isFalse();
+    }
+    
+    @Test
+    @DisplayName("Deve buscar clientes por nome contendo texto")
+    void deveBuscarClientesPorNome() {
+        // Given
+        Cliente cliente1 = new Cliente();
+        cliente1.setNome("João Silva");
+        cliente1.setCpf("12345678901");
+        cliente1.setEmail("joao@email.com");
+        
+        Cliente cliente2 = new Cliente();
+        cliente2.setNome("João Santos");
+        cliente2.setCpf("98765432100");
+        cliente2.setEmail("joao.santos@email.com");
+        
+        entityManager.persistAndFlush(cliente1);
+        entityManager.persistAndFlush(cliente2);
+        
+        // When
+        List<Cliente> clientes = clienteRepository.findByNomeContainingIgnoreCase("joão");
+        
+        // Then
+        assertThat(clientes).hasSize(2);
+        assertThat(clientes).extracting(Cliente::getNome)
+                .containsExactlyInAnyOrder("João Silva", "João Santos");
     }
 }
 ```
 
+## FORMATO DE RESPOSTA OBRIGATÓRIO
+
+### ANÁLISE DAS FUNCIONALIDADES CONVERTIDAS
+- CRUD de Clientes
+- Validações de CPF e Nome
+- Regras de negócio para criação de Cliente
+
+### TESTES DE CONTROLLER
+- ClienteControllerTest: Testes para criação, busca e tratamento de erros na criação e busca de clientes.
+
+### TESTES DE SERVICE
+- ClienteServiceTest: Testes para lógica de negócio ao criar clientes, incluindo validações e tratamento de exceções.
+
+### TESTES DE REPOSITORY
+- ClienteRepositoryTest: Testes para consultas específicas no banco de dados, como verificação de existência por nome e busca de clientes por nome contendo texto.
+
+### CENÁRIOS DE TESTE COBERTOS
+- Criação de cliente com dados válidos
+- Criação de cliente com nome vazio
+- Busca de cliente por ID existente
+- Busca de cliente inexistente
+- Criação de cliente com nome duplicado
+- Criação de cliente com CPF inválido
+- Verificação de existência de cliente por nome
+- Busca de clientes por nome contendo texto
+
+### COBERTURA DE REGRAS DE NEGÓCIO
+- Regra de não permitir criação de cliente com nome já existente
+- Regra de validação de CPF
+
+## CRITÉRIOS DE QUALIDADE OBRIGATÓRIOS
+✅ Gere testes funcionais e compiláveis
+✅ Teste TODAS as funcionalidades convertidas do Delphi
+✅ Cubra TODAS as validações implementadas
+✅ Teste TODAS as regras de negócio
+✅ Inclua cenários de sucesso e erro
+✅ Use nomes de métodos descritivos
+✅ Adicione comentários explicativos
+✅ Implemente testes de integração e unitários
+✅ Teste fluxos alternativos e casos extremos
+
 ## COBERTURA OBRIGATÓRIA
-- ✅ Todos os endpoints REST
-- ✅ Lógica de negócio dos serviços  
-- ✅ Queries customizadas dos repositories
-- ✅ Cenários de erro e exceções
-- ✅ Validações de entrada
-- ✅ Regras de negócio críticas
+- **Operações CRUD**: Teste todas as operações (Create, Read, Update, Delete)
+- **Validações**: Teste todas as validações convertidas do Delphi
+- **Regras de negócio**: Teste toda lógica de negócio implementada
+- **Cenários de erro**: Teste todos os possíveis erros
+- **Fluxos alternativos**: Teste caminhos alternativos
+- **Integrações**: Teste integração entre camadas
+- **Performance**: Teste consultas complexas quando aplicável
+
+## PADRÕES DE TESTE OBRIGATÓRIOS
+- **Naming**: Use nomes descritivos (deve...Quando...Então)
+- **AAA Pattern**: Arrange, Act, Assert
+- **Given/When/Then**: Estrutura clara de cada teste
+- **Mocks**: Use mocks para dependências externas
+- **Verificações**: Verifique chamadas de métodos
+- **Assertions**: Use assertions específicas (isEqualTo, isTrue, etc.)
+- **Comentários**: Explique o objetivo de cada teste
+- **Dados realistas**: Use dados baseados no sistema real
+
+**IMPORTANTE**: Teste APENAS as funcionalidades convertidas do código Delphi. Não crie testes para funcionalidades que não existem no código original.

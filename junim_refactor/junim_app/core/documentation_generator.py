@@ -1,736 +1,1078 @@
 """
-Gerador de documentação estruturada para projetos Delphi analisados
+Gerador de documentação técnica para projetos Delphi
+Focado exclusivamente em prompts específicos - SEM FALLBACKS
 """
 
 import os
 import json
-from typing import Dict, Any, List
-from datetime import datetime
+import re
 import logging
+from typing import Dict, Any, List, Optional
+from pathlib import Path
+from datetime import datetime
 
-# Configuração do logging
-logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 class DocumentationGenerator:
-    """Gerador de documentação estruturada para análise de projetos legados"""
+    """Gerador de documentação técnica - APENAS com prompts e dados específicos"""
     
-    def __init__(self, output_directory: str = None):
+    def __init__(self, llm_service=None, prompt_manager=None):
+        self.llm_service = llm_service
+        self.prompt_manager = prompt_manager
+        self.docs_dir = Path("generated_docs")
+        self.docs_dir.mkdir(exist_ok=True)
+        
+        # Apenas os 4 documentos essenciais solicitados
+        self.document_types = {
+            'project_functions': {
+                'name': '⚙️ Funções do Projeto Original',
+                'prompt_type': 'project_functions',
+                'filename': 'project_functions.md'
+            },
+            'project_diagram': {
+                'name': '📊 Diagrama do Projeto Original',
+                'prompt_type': 'project_diagram',
+                'filename': 'project_diagram.md'
+            },
+            'delphi_java_correlation': {
+                'name': '🔗 Correlação Delphi-Java',
+                'prompt_type': 'correlations',
+                'filename': 'delphi_java_correlation.md'
+            },
+            'project_description': {
+                'name': '📝 Descrição do Projeto',
+                'prompt_type': 'project_description',
+                'filename': 'project_description.md'
+            }
+        }
+
+    def generate_specific_documentation(self, analysis_results: Dict[str, Any], 
+                                      project_name: str = "Projeto",
+                                      include_mermaid: bool = True,
+                                      documents_to_generate: List[str] = None) -> Dict[str, str]:
         """
-        Inicializa o gerador de documentação
+        Gera APENAS documentação específica usando prompts - SEM FALLBACKS
         
-        Args:
-            output_directory: Diretório onde salvar os documentos gerados
-        """
-        if output_directory is None:
-            current_dir = os.path.dirname(os.path.abspath(__file__))
-            project_root = os.path.dirname(current_dir)
-            output_directory = os.path.join(project_root, 'generated_docs')
-        
-        self.output_directory = output_directory
-        os.makedirs(output_directory, exist_ok=True)
-        
-        self.generated_documents = {}
-    
-    def generate_complete_documentation(self, analysis_data: Dict[str, Any]) -> Dict[str, str]:
-        """
-        Gera documentação completa baseada na análise
-        
-        Args:
-            analysis_data: Dados da análise completa do projeto
-            
         Returns:
-            Dicionário com caminhos dos documentos gerados
+            Dict com conteúdo dos documentos gerados (não caminhos)
         """
         try:
-            logger.info("Iniciando geração de documentação completa")
+            logger.info(f"🚀 Gerando documentação essencial para: {project_name}")
             
-            project_name = analysis_data.get('metadata', {}).get('project_name', 'Unknown')
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            # Validação crítica dos dados de entrada
+            if not analysis_results or not isinstance(analysis_results, dict):
+                error_msg = f"❌ ERRO CRÍTICO: Dados de análise inválidos para {project_name}"
+                logger.error(error_msg)
+                raise ValueError(error_msg)
             
-            # Cria diretório específico para este projeto
-            project_dir = os.path.join(self.output_directory, f"{project_name}_{timestamp}")
-            os.makedirs(project_dir, exist_ok=True)
+            logger.info(f"📋 Dados disponíveis: {list(analysis_results.keys())}")
+            
+            # Cria diretório específico para o projeto
+            project_dir = self.docs_dir / self._sanitize_filename(project_name)
+            project_dir.mkdir(exist_ok=True)
+            
+            generated_docs = {}
+            
+            # LISTA FIXA DOS 4 DOCUMENTOS ESSENCIAIS
+            if documents_to_generate is None:
+                documents_to_generate = [
+                    'project_functions',
+                    'project_diagram', 
+                    'delphi_java_correlation',
+                    'project_description'
+                ]
+            
+            # Gera apenas documentos especificados - SEM FALLBACKS
+            for doc_type in documents_to_generate:
+                if doc_type in self.document_types:
+                    doc_info = self.document_types[doc_type]
+                    logger.info(f"📄 Gerando documento: {doc_info['name']}")
+                    
+                    # Gera o documento usando prompts reais
+                    content = self._generate_document_content(doc_type, analysis_results, project_name)
+                    
+                    if not content or len(content.strip()) < 100:
+                        error_msg = f"❌ FALHA na geração de {doc_info['name']} - Conteúdo insuficiente"
+                        logger.error(error_msg)
+                        raise RuntimeError(error_msg)
+                    
+                    # Salva o documento
+                    doc_path = project_dir / doc_info['filename']
+                    with open(doc_path, 'w', encoding='utf-8') as f:
+                        f.write(content)
+                    
+                    # Retorna o conteúdo (não o caminho)
+                    generated_docs[doc_type] = content
+                    logger.info(f"✅ Documento gerado: {doc_info['name']} ({len(content)} chars)")
+            
+            # Gera README específico
+            readme_content = self._generate_essential_readme(analysis_results, project_name, list(generated_docs.keys()))
+            readme_path = project_dir / "README.md"
+            with open(readme_path, 'w', encoding='utf-8') as f:
+                f.write(readme_content)
+            generated_docs['readme'] = readme_content
+            
+            logger.info(f"🎉 Documentação essencial gerada: {len(generated_docs)} arquivos")
+            logger.info(f"📁 Documentos salvos em: {project_dir}")
+            return generated_docs
+            
+        except Exception as e:
+            error_msg = f"❌ ERRO CRÍTICO na geração de documentação: {str(e)}"
+            logger.error(error_msg)
+            raise RuntimeError(error_msg) from e
+
+    def _generate_document_content(self, doc_type: str, analysis_results: Dict[str, Any], 
+                                   project_name: str) -> str:
+        """
+        Gera conteúdo de um documento específico usando prompts - SEM FALLBACKS
+        """
+        try:
+            # Validação do tipo de documento
+            if doc_type not in self.document_types:
+                raise ValueError(f"Tipo de documento '{doc_type}' não suportado")
+            
+            doc_config = self.document_types[doc_type]
+            
+            # Obtém prompt específico - OBRIGATÓRIO
+            prompt = self._get_prompt_for_document(doc_config['prompt_type'])
+            if not prompt or len(prompt) < 100:
+                raise RuntimeError(f"Prompt inválido para {doc_type}")
+            
+            # Prepara contexto - OBRIGATÓRIO
+            context = self._prepare_context(analysis_results, project_name, doc_type)
+            if not context or len(context) < 500:
+                raise RuntimeError(f"Contexto insuficiente para {doc_type}")
+            
+            # Gera conteúdo usando LLM - OBRIGATÓRIO
+            content = self._generate_content_with_llm(prompt, context)
+            if not content or len(content.strip()) < 100:
+                raise RuntimeError(f"LLM falhou ao gerar conteúdo para {doc_type}")
+            
+            return content
+            
+        except Exception as e:
+            error_msg = f"Erro ao gerar {doc_type}: {str(e)}"
+            logger.error(error_msg)
+            raise RuntimeError(error_msg) from e
+
+    def _get_prompt_for_document(self, prompt_type: str) -> str:
+        """Obtém prompt específico - FALHA se não conseguir"""
+        if not self.prompt_manager:
+            raise RuntimeError("PromptManager não disponível - OBRIGATÓRIO para geração")
+        
+        try:
+            # Mapeia tipos de prompt para métodos do PromptManager
+            prompt_methods = {
+                'project_functions': 'get_functionality_mapping_prompt',
+                'project_diagram': 'get_backend_analysis_prompt',  # Usar backend para diagrama
+                'correlations': 'get_backend_analysis_prompt',
+                'project_description': 'get_backend_analysis_prompt'
+            }
+            
+            method_name = prompt_methods.get(prompt_type)
+            if not method_name or not hasattr(self.prompt_manager, method_name):
+                raise RuntimeError(f"Método {method_name} não encontrado no PromptManager")
+            
+            method = getattr(self.prompt_manager, method_name)
+            prompt = method()
+            
+            if not prompt or len(prompt) < 50:
+                raise RuntimeError(f"Prompt vazio ou inválido para {prompt_type}")
+            
+            logger.info(f"✅ Prompt obtido para {prompt_type}: {len(prompt)} caracteres")
+            return prompt
+                
+        except Exception as e:
+            error_msg = f"Erro ao obter prompt para {prompt_type}: {str(e)}"
+            logger.error(error_msg)
+            raise RuntimeError(error_msg) from e
+
+    def _prepare_context(self, analysis_results: Dict[str, Any], project_name: str, doc_key: str) -> str:
+        """Prepara contexto específico - FALHA se dados insuficientes"""
+        
+        # Validação rigorosa dos dados de entrada
+        if not analysis_results or not isinstance(analysis_results, dict):
+            raise ValueError("analysis_results está vazio ou inválido")
+        
+        logger.info(f"🔍 Preparando contexto para {doc_key}")
+        logger.info(f"📋 Dados disponíveis: {list(analysis_results.keys())}")
+        
+        # Formata dados de análise
+        formatted_data = self._format_analysis_data(analysis_results)
+        if len(formatted_data) < 200:
+            raise RuntimeError(f"Dados formatados insuficientes: {len(formatted_data)} chars")
+        
+        # Extrai especificidades do código
+        code_specifics = self._extract_code_specifics(analysis_results)
+        if len(code_specifics) < 100:
+            logger.warning(f"⚠️ Especificações do código limitadas: {len(code_specifics)} chars")
+        
+        # Monta contexto completo
+        context = f"""
+===== CONTEXTO ESPECÍFICO DO PROJETO =====
+PROJETO: {project_name}
+TIPO DE DOCUMENTO: {doc_key}
+
+===== DADOS REAIS EXTRAÍDOS DA ANÁLISE =====
+{formatted_data}
+
+===== CÓDIGO E COMPONENTES IDENTIFICADOS =====
+{code_specifics}
+
+===== INSTRUÇÕES CRÍTICAS PARA IA =====
+VOCÊ DEVE GERAR DOCUMENTAÇÃO TÉCNICA ESPECÍFICA para este projeto Delphi ({project_name}).
+
+🚨 REGRAS OBRIGATÓRIAS:
+1. Use EXCLUSIVAMENTE os dados fornecidos acima - não invente nada
+2. Mencione nomes ESPECÍFICOS de classes, métodos e arquivos identificados
+3. Foque em aspectos de backend e modernização para Java Spring Boot
+4. Use formatação Markdown clara com títulos, subtítulos e listas
+5. Seja técnico e preciso - EVITE descrições genéricas
+6. Inclua exemplos práticos baseados APENAS no código analisado
+
+FORMATO ESPERADO: Documento Markdown técnico específico para {project_name}
+NÃO USE INFORMAÇÕES GENÉRICAS - BASE-SE APENAS NOS DADOS FORNECIDOS ACIMA
+        """
+        
+        logger.info(f"🎯 Contexto preparado: {len(context)} caracteres")
+        
+        if len(context) < 1000:
+            raise RuntimeError(f"Contexto muito pequeno: {len(context)} caracteres")
+        
+        return context
+
+    def _extract_code_specifics(self, analysis_results: Dict[str, Any]) -> str:
+        """Extrai informações específicas do código"""
+        try:
+            specifics = []
+            
+            # Extrai classes identificadas
+            all_classes = []
+            files_data = analysis_results.get('files', {})
+            
+            if isinstance(files_data, dict):
+                files_to_process = files_data.values()
+            elif isinstance(files_data, list):
+                files_to_process = files_data
+            else:
+                files_to_process = []
+            
+            for file_data in files_to_process:
+                if isinstance(file_data, dict):
+                    classes = file_data.get('classes', [])
+                    for cls in classes:
+                        class_name = cls.get('name', '')
+                        parent_class = cls.get('parent_class', '')
+                        if class_name:
+                            all_classes.append(f"{class_name} (extends {parent_class})")
+            
+            if all_classes:
+                specifics.append("**Classes Identificadas:**")
+                for cls in all_classes[:10]:
+                    specifics.append(f"- {cls}")
+            
+            # Extrai métodos importantes
+            important_methods = []
+            for file_data in files_to_process:
+                if isinstance(file_data, dict):
+                    methods = file_data.get('methods', [])
+                    for method in methods:
+                        method_name = method.get('name', '')
+                        method_type = method.get('type', 'method')
+                        return_type = method.get('return_type', 'void')
+                        if method_name and not method_name.startswith('_'):
+                            important_methods.append(f"{method_name}(): {return_type} ({method_type})")
+            
+            if important_methods:
+                specifics.append("\n**Métodos Principais:**")
+                for method in important_methods[:15]:
+                    specifics.append(f"- {method}")
+            
+            # Extrai eventos de interface
+            event_methods = []
+            for file_data in files_to_process:
+                if isinstance(file_data, dict):
+                    methods = file_data.get('methods', [])
+                    for method in methods:
+                        method_name = method.get('name', '')
+                        if any(event in method_name for event in ['Click', 'Change', 'Create', 'Close', 'Show']):
+                            event_methods.append(method_name)
+            
+            if event_methods:
+                specifics.append("\n**Eventos de Interface:**")
+                for event in event_methods[:10]:
+                    specifics.append(f"- {event}")
+            
+            return "\n".join(specifics) if specifics else "Componentes básicos identificados."
+            
+        except Exception as e:
+            logger.error(f"Erro ao extrair especificidades: {str(e)}")
+            return "Erro ao extrair detalhes do código."
+
+    def _format_analysis_data(self, analysis_results: Dict[str, Any]) -> str:
+        """Formata dados de análise de forma legível"""
+        try:
+            formatted = []
+            
+            # Metadados do projeto
+            metadata = analysis_results.get('metadata', {})
+            formatted.append(f"**Projeto**: {metadata.get('project_name', 'N/A')}")
+            formatted.append(f"**Arquivos Analisados**: {metadata.get('total_files_analyzed', 0)}")
+            formatted.append(f"**Caminho**: {metadata.get('project_path', 'N/A')}")
+            
+            # Composição do projeto
+            files_by_type = metadata.get('files_by_type', {})
+            if files_by_type:
+                formatted.append("\n**Composição do Projeto:**")
+                for file_type, count in files_by_type.items():
+                    if count > 0:
+                        formatted.append(f"- Arquivos {file_type.upper()}: {count}")
+            
+            # Estatísticas gerais
+            summary = analysis_results.get('summary', {})
+            if summary:
+                formatted.append("\n**Estatísticas Gerais:**")
+                formatted.append(f"- Units: {summary.get('total_units', 0)}")
+                formatted.append(f"- Forms: {summary.get('total_forms', 0)}")
+                formatted.append(f"- Classes: {summary.get('total_classes', 0)}")
+                formatted.append(f"- Métodos: {summary.get('total_methods', 0)}")
+            
+            # Arquivos analisados
+            files = analysis_results.get('files', {})
+            if files:
+                files_count = len(files) if isinstance(files, dict) else len(files) if isinstance(files, list) else 0
+                formatted.append(f"\n**Arquivos Detalhados**: {files_count}")
+                
+                if isinstance(files, dict):
+                    sample_files = list(files.keys())[:5]
+                    for file_path in sample_files:
+                        file_name = file_path.split('\\')[-1] if '\\' in file_path else file_path
+                        formatted.append(f"- {file_name}")
+            
+            result = "\n".join(formatted)
+            logger.info(f"✅ Dados formatados: {len(result)} caracteres")
+            
+            return result if result else "Dados de análise limitados"
+            
+        except Exception as e:
+            logger.error(f"Erro ao formatar dados: {str(e)}")
+            # Formato mínimo em caso de erro
+            return f"Projeto: {analysis_results.get('metadata', {}).get('project_name', 'N/A')}\nArquivos: {analysis_results.get('metadata', {}).get('total_files_analyzed', 0)}"
+
+    def _generate_content_with_llm(self, prompt: str, context: str) -> str:
+        """Gera conteúdo usando LLM - FALHA se não conseguir"""
+        
+        if not self.llm_service:
+            raise RuntimeError("LLM service não disponível - OBRIGATÓRIO para geração")
+        
+        try:
+            # Combina prompt especializado com contexto específico
+            full_prompt = f"{prompt}\n\n{context}"
+            
+            logger.info(f"🚀 Gerando com LLM: {len(full_prompt)} caracteres")
+            
+            # Chama o LLM service
+            content = self.llm_service.generate_response(full_prompt)
+            
+            if not content or len(content.strip()) < 100:
+                raise RuntimeError("Resposta do LLM muito curta ou vazia")
+            
+            logger.info(f"✅ Conteúdo gerado: {len(content)} caracteres")
+            return content
+                
+        except Exception as e:
+            error_msg = f"Erro na geração com LLM: {str(e)}"
+            logger.error(error_msg)
+            raise RuntimeError(error_msg) from e
+
+    def _generate_essential_readme(self, analysis_results: Dict[str, Any], 
+                                 project_name: str, generated_docs_list: List[str]) -> str:
+        """Gera README essencial para os 4 documentos principais"""
+        
+        metadata = analysis_results.get('metadata', {})
+        total_files = metadata.get('total_files_analyzed', 0)
+        total_lines = metadata.get('total_lines_analyzed', 0)
+        
+        readme = f"""# Documentação para Geração Java Spring Boot - {project_name}
+
+## Resumo da Análise
+- **Projeto**: {project_name}
+- **Arquivos analisados**: {total_files}
+- **Linhas de código**: {total_lines:,}
+- **Data da análise**: {datetime.now().strftime('%d/%m/%Y %H:%M')}
+
+## 📋 Documentos Essenciais Gerados
+
+### 1. ⚙️ Funções do Projeto Original
+**Arquivo**: `project_functions.md`
+- Lista todas as funções identificadas no projeto Delphi
+- Métodos de Forms, Units e DataModules
+- Base para geração dos métodos Java
+
+### 2. 📊 Diagrama do Projeto Original  
+**Arquivo**: `project_diagram.md`
+- Diagrama Mermaid da arquitetura atual
+- Fluxo de dados identificado
+- Estrutura visual para conversão
+
+### 3. 🔗 Correlação Delphi-Java
+**Arquivo**: `delphi_java_correlation.md`
+- Mapeamento direto de componentes Delphi → Spring Boot
+- Equivalências de classes e métodos
+- Padrões de conversão
+
+### 4. 📝 Descrição do Projeto
+**Arquivo**: `project_description.md`
+- Visão geral baseada na análise
+- Funcionalidades identificadas
+- Características técnicas
+
+## 🎯 Próximos Passos
+1. ✅ Análise Delphi concluída
+2. ✅ Documentação essencial gerada
+3. 🔄 **Próximo**: Geração do código Java Spring Boot
+4. 🔄 Testes e validação
+
+## 📊 Estatísticas da Análise
+- **Units identificadas**: {len(analysis_results.get('units_analysis', {}))}
+- **Forms identificados**: {len(analysis_results.get('forms_analysis', {}))}
+- **Classes totais**: {analysis_results.get('summary', {}).get('total_classes', 0)}
+- **Métodos totais**: {analysis_results.get('summary', {}).get('total_methods', 0)}
+
+---
+*Documentação gerada automaticamente pelo Sistema JUNIM*
+*Focada na geração de código Java Spring Boot*
+"""
+        return readme
+
+    def _sanitize_filename(self, filename: str) -> str:
+        """Sanitiza nome do arquivo"""
+        sanitized = re.sub(r'[<>:"/\\|?*]', '_', filename)
+        sanitized = re.sub(r'\s+', '_', sanitized)
+        return sanitized
+
+    # Métodos auxiliares para compatibilidade com interface existente
+    def get_document_content(self, doc_key_or_path: str, project_name: str = "Projeto") -> str:
+        """Obtém conteúdo de um documento específico"""
+        try:
+            if os.path.isfile(doc_key_or_path):
+                with open(doc_key_or_path, 'r', encoding='utf-8') as f:
+                    return f.read()
+            
+            doc_config = self.document_types.get(doc_key_or_path, {})
+            filename = doc_config.get('filename', f'{doc_key_or_path}.md')
+            
+            project_dir = self.docs_dir / self._sanitize_filename(project_name)
+            doc_path = project_dir / filename
+            
+            if doc_path.exists():
+                with open(doc_path, 'r', encoding='utf-8') as f:
+                    return f.read()
+            else:
+                return f"Documento não encontrado: {doc_key_or_path}"
+                
+        except Exception as e:
+            logger.error(f"Erro ao ler documento {doc_key_or_path}: {str(e)}")
+            return f"Erro ao carregar documento: {str(e)}"
+    
+    def generate_complete_documentation(self, analysis_results: Dict[str, Any], 
+                                      project_name: str = "Projeto") -> Dict[str, str]:
+        """
+        Gera documentação completa do projeto baseada na análise
+        
+        Args:
+            analysis_results: Resultados da análise do projeto
+            project_name: Nome do projeto
+            
+        Returns:
+            Dict com caminhos dos documentos gerados
+        """
+        try:
+            logger.info(f"🚀 Iniciando geração de documentação completa para: {project_name}")
+            
+            # Cria diretório específico para o projeto
+            project_dir = self.docs_dir / self._sanitize_filename(project_name)
+            project_dir.mkdir(exist_ok=True)
+            
+            generated_docs = {}
+            
+            # Gera cada tipo de documento
+            for doc_key, doc_config in self.document_types.items():
+                try:
+                    logger.info(f"📄 Gerando documento: {doc_config['name']}")
+                    
+                    doc_path = self._generate_document(
+                        doc_key=doc_key,
+                        doc_config=doc_config,
+                        analysis_results=analysis_results,
+                        project_dir=project_dir,
+                        project_name=project_name
+                    )
+                    
+                    if doc_path:
+                        generated_docs[doc_key] = str(doc_path)
+                        logger.info(f"✅ Documento gerado: {doc_config['name']}")
+                    else:
+                        logger.warning(f"⚠️ Falha ao gerar documento: {doc_config['name']}")
+                        
+                except Exception as e:
+                    logger.error(f"❌ Erro ao gerar documento {doc_key}: {str(e)}")
+                    continue
+            
+            # Salva metadados
+            self._save_documentation_metadata(generated_docs, analysis_results, project_dir)
+            
+            logger.info(f"🎉 Documentação completa gerada: {len(generated_docs)} documentos")
+            return generated_docs
+            
+        except Exception as e:
+            logger.error(f"❌ Erro na geração de documentação: {str(e)}")
+            return {}
+    
+    def _generate_document(self, doc_key: str, doc_config: Dict[str, Any], 
+                          analysis_results: Dict[str, Any], project_dir: Path, 
+                          project_name: str) -> Optional[Path]:
+        """Gera um documento específico"""
+        try:
+            # Obtém prompt específico
+            prompt = self._get_prompt_for_document(doc_config['prompt_type'])
+            
+            # Prepara contexto
+            context = self._prepare_context(analysis_results, project_name, doc_key)
+            
+            # Gera conteúdo usando LLM
+            content = self._generate_content_with_llm(prompt, context)
+            
+            if not content or len(content.strip()) < 100:
+                raise RuntimeError(f"Falha ao gerar conteúdo para {doc_key}")
+            
+            # Salva documento
+            doc_path = project_dir / doc_config['filename']
+            with open(doc_path, 'w', encoding='utf-8') as f:
+                f.write(content)
+                
+            return doc_path
+            
+        except Exception as e:
+            logger.error(f"Erro ao gerar documento {doc_key}: {str(e)}")
+            return None
+    
+    def _get_prompt_for_document(self, prompt_type: str) -> str:
+        """Obtém prompt específico para tipo de documento - FALHA se não conseguir"""
+        if not self.prompt_manager:
+            raise RuntimeError("PromptManager não disponível - OBRIGATÓRIO para geração")
+        
+        try:
+            # Mapeia tipos de prompt para métodos do PromptManager
+            prompt_methods = {
+                'project_functions': 'get_functionality_mapping_prompt',
+                'project_diagram': 'get_backend_analysis_prompt',  # Usar backend para diagrama
+                'correlations': 'get_backend_analysis_prompt',
+                'project_description': 'get_backend_analysis_prompt'
+            }
+            
+            method_name = prompt_methods.get(prompt_type)
+            if not method_name or not hasattr(self.prompt_manager, method_name):
+                raise RuntimeError(f"Método {method_name} não encontrado no PromptManager")
+            
+            method = getattr(self.prompt_manager, method_name)
+            prompt = method()
+            
+            if not prompt or len(prompt) < 50:
+                raise RuntimeError(f"Prompt vazio ou inválido para {prompt_type}")
+            
+            logger.info(f"✅ Prompt obtido para {prompt_type}: {len(prompt)} caracteres")
+            return prompt
+                
+        except Exception as e:
+            error_msg = f"Erro ao obter prompt para {prompt_type}: {str(e)}"
+            logger.error(error_msg)
+            raise RuntimeError(error_msg) from e
+    
+ 
+    def _prepare_context(self, analysis_results: Dict[str, Any], project_name: str, doc_key: str) -> str:
+        """Prepara contexto para geração de documento - FALHA se dados insuficientes"""
+        
+        # Validação rigorosa dos dados de entrada
+        if not analysis_results or not isinstance(analysis_results, dict):
+            raise ValueError("analysis_results está vazio ou inválido")
+        
+        logger.info(f"🔍 Preparando contexto para {doc_key} - Dados disponíveis: {list(analysis_results.keys())}")
+        
+        # Formata dados de forma mais legível
+        formatted_data = self._format_analysis_data(analysis_results)
+        if len(formatted_data) < 200:
+            raise RuntimeError(f"Dados formatados insuficientes: {len(formatted_data)} chars")
+        
+        # Adiciona informações específicas do código
+        code_specifics = self._extract_code_specifics(analysis_results)
+        if len(code_specifics) < 100:
+            logger.warning(f"⚠️ Especificações do código limitadas: {len(code_specifics)} chars")
+        
+        # Monta contexto completo - igual à versão limpa
+        context = f"""
+===== CONTEXTO ESPECÍFICO DO PROJETO =====
+PROJETO: {project_name}
+TIPO DE DOCUMENTO: {doc_key}
+
+===== DADOS REAIS EXTRAÍDOS DA ANÁLISE =====
+{formatted_data}
+
+===== CÓDIGO E COMPONENTES IDENTIFICADOS =====
+{code_specifics}
+
+===== INSTRUÇÕES CRÍTICAS PARA IA =====
+VOCÊ DEVE GERAR DOCUMENTAÇÃO TÉCNICA ESPECÍFICA para este projeto Delphi ({project_name}).
+
+🚨 REGRAS OBRIGATÓRIAS:
+1. Use EXCLUSIVAMENTE os dados fornecidos acima - não invente nada
+2. Mencione nomes ESPECÍFICOS de classes, métodos e arquivos identificados
+3. Foque em aspectos de backend e modernização para Java Spring Boot
+4. Use formatação Markdown clara com títulos, subtítulos e listas
+5. Seja técnico e preciso - EVITE descrições genéricas
+6. Inclua exemplos práticos baseados APENAS no código analisado
+
+FORMATO ESPERADO: Documento Markdown técnico específico para {project_name}
+NÃO USE INFORMAÇÕES GENÉRICAS - BASE-SE APENAS NOS DADOS FORNECIDOS ACIMA
+        """
+        
+        logger.info(f"🎯 Contexto preparado: {len(context)} caracteres")
+        
+        if len(context) < 1000:
+            raise RuntimeError(f"Contexto muito pequeno: {len(context)} caracteres")
+        
+        return context
+    
+    def _extract_code_specifics(self, analysis_results: Dict[str, Any]) -> str:
+        """Extrai informações específicas do código para enriquecer o contexto"""
+        try:
+            specifics = []
+            
+            # Extrai nomes de classes específicas
+            all_classes = []
+            files_data = analysis_results.get('files', {})
+            
+            # Verifica se files é um dicionário ou lista
+            if isinstance(files_data, dict):
+                files_to_process = files_data.values()
+            elif isinstance(files_data, list):
+                files_to_process = files_data
+            else:
+                files_to_process = []
+            
+            for file_data in files_to_process:
+                if isinstance(file_data, dict):
+                    classes = file_data.get('classes', [])
+                    for cls in classes:
+                        class_name = cls.get('name', '')
+                        parent_class = cls.get('parent_class', '')
+                        if class_name:
+                            all_classes.append(f"{class_name} (extends {parent_class})")
+            
+            if all_classes:
+                specifics.append(f"**Classes Identificadas:**")
+                for cls in all_classes[:10]:  # Limita para não ficar muito longo
+                    specifics.append(f"- {cls}")
+            
+            # Extrai métodos específicos importantes
+            important_methods = []
+            files_data = analysis_results.get('files', {})
+            
+            # Verifica se files é um dicionário ou lista
+            if isinstance(files_data, dict):
+                files_to_process = files_data.values()
+            elif isinstance(files_data, list):
+                files_to_process = files_data
+            else:
+                files_to_process = []
+                
+            for file_data in files_to_process:
+                if isinstance(file_data, dict):
+                    methods = file_data.get('methods', [])
+                    for method in methods:
+                        method_name = method.get('name', '')
+                        method_type = method.get('type', 'method')
+                        return_type = method.get('return_type', 'void')
+                        if method_name and not method_name.startswith('_'):  # Ignora métodos privados
+                            important_methods.append(f"{method_name}(): {return_type} ({method_type})")
+            
+            if important_methods:
+                specifics.append(f"\n**Métodos Principais:**")
+                for method in important_methods[:15]:  # Limita para não ficar muito longo
+                    specifics.append(f"- {method}")
+            
+            # Extrai padrões de nomenclatura
+            naming_patterns = set()
+            files_data = analysis_results.get('files', {})
+            
+            # Verifica se files é um dicionário ou lista
+            if isinstance(files_data, dict):
+                files_to_process = files_data.values()
+            elif isinstance(files_data, list):
+                files_to_process = files_data
+            else:
+                files_to_process = []
+                
+            for file_data in files_to_process:
+                if isinstance(file_data, dict):
+                    classes = file_data.get('classes', [])
+                    for cls in classes:
+                        class_name = cls.get('name', '')
+                        if class_name.startswith('T'):
+                            naming_patterns.add("Classes com prefixo T (padrão Delphi)")
+                        if 'Form' in class_name:
+                            naming_patterns.add("Classes de formulário (UI)")
+                        if 'DataModule' in class_name:
+                            naming_patterns.add("DataModules (acesso a dados)")
+            
+            if naming_patterns:
+                specifics.append(f"\n**Padrões Identificados:**")
+                for pattern in naming_patterns:
+                    specifics.append(f"- {pattern}")
+            
+            # Extrai informações sobre eventos (importante para UI)
+            event_methods = []
+            files_data = analysis_results.get('files', {})
+            
+            # Verifica se files é um dicionário ou lista
+            if isinstance(files_data, dict):
+                files_to_process = files_data.values()
+            elif isinstance(files_data, list):
+                files_to_process = files_data
+            else:
+                files_to_process = []
+                
+            for file_data in files_to_process:
+                if isinstance(file_data, dict):
+                    methods = file_data.get('methods', [])
+                    for method in methods:
+                        method_name = method.get('name', '')
+                        if any(event in method_name for event in ['Click', 'Change', 'Create', 'Close', 'Show']):
+                            event_methods.append(method_name)
+            
+            if event_methods:
+                specifics.append(f"\n**Eventos de Interface:**")
+                for event in event_methods[:10]:
+                    specifics.append(f"- {event}")
+            
+            return "\n".join(specifics) if specifics else "Nenhum detalhe específico adicional identificado."
+            
+        except Exception as e:
+            logger.error(f"Erro ao extrair especificidades do código: {str(e)}")
+            return "Erro ao extrair detalhes específicos do código."
+    
+    def _format_analysis_data(self, analysis_results: Dict[str, Any]) -> str:
+        """Formata dados de análise de forma mais legível e específica"""
+        try:
+            formatted = []
+            
+            # CORREÇÃO: Log para debug dos dados recebidos
+            logger.info(f"🔍 Formatando dados - Chaves disponíveis: {list(analysis_results.keys())}")
+            
+            # Metadados do projeto
+            metadata = analysis_results.get('metadata', {})
+            formatted.append(f"**Projeto**: {metadata.get('project_name', 'N/A')}")
+            formatted.append(f"**Data da Análise**: {metadata.get('analysis_date', 'N/A')}")
+            formatted.append(f"**Arquivos Analisados**: {metadata.get('total_files_analyzed', 0)}")
+            formatted.append(f"**Caminho**: {metadata.get('project_path', 'N/A')}")
+            
+            # Tipos de arquivos com detalhes
+            files_by_type = metadata.get('files_by_type', {})
+            if files_by_type:
+                formatted.append("\n**Composição do Projeto:**")
+                for file_type, count in files_by_type.items():
+                    if count > 0:
+                        formatted.append(f"- Arquivos {file_type.upper()}: {count}")
+            
+            # CORREÇÃO: Extrair dados de todas as seções possíveis
+            # Resumo detalhado do projeto
+            summary = analysis_results.get('summary', {})
+            if summary:
+                formatted.append(f"\n**Estatísticas Gerais:**")
+                formatted.append(f"- Units: {summary.get('total_units', 0)}")
+                formatted.append(f"- Forms: {summary.get('total_forms', 0)}")
+                formatted.append(f"- DataModules: {summary.get('total_datamodules', 0)}")
+                formatted.append(f"- Classes: {summary.get('total_classes', 0)}")
+                formatted.append(f"- Métodos: {summary.get('total_methods', 0)}")
+            
+            # CORREÇÃO: Tentar extrair dados de múltiplas fontes
+            # Dados dos arquivos analisados (nova seção)
+            files = analysis_results.get('files', {})
+            if files:
+                formatted.append(f"\n**Arquivos Analisados Detalhadamente:**")
+                files_count = len(files) if isinstance(files, dict) else len(files) if isinstance(files, list) else 0
+                formatted.append(f"- Total de arquivos detalhados: {files_count}")
+                
+                # Extrai amostras dos arquivos
+                if isinstance(files, dict):
+                    sample_files = list(files.keys())[:5]
+                    for file_path in sample_files:
+                        file_name = file_path.split('\\')[-1] if '\\' in file_path else file_path
+                        formatted.append(f"- {file_name}")
+            
+            # Métricas de complexidade
+            complexity = summary.get('complexity_metrics', {}) if summary else {}
+            if complexity:
+                formatted.append(f"\n**Métricas de Complexidade:**")
+                formatted.append(f"- Complexidade Média: {complexity.get('average_complexity', 0)}")
+                formatted.append(f"- Complexidade Máxima: {complexity.get('max_complexity', 0)}")
+                formatted.append(f"- Total de Linhas: {complexity.get('total_lines', 0)}")
+                formatted.append(f"- Métodos Complexos: {complexity.get('methods_with_high_complexity', 0)}")
+            
+            # Funcionalidades principais específicas
+            functionalities = analysis_results.get('main_functionalities', [])
+            if functionalities:
+                formatted.append("\n**Funcionalidades Identificadas:**")
+                for func in functionalities:
+                    formatted.append(f"- {func}")
+            
+            # CORREÇÃO: Análise detalhada de units com melhor tratamento de dados
+            units_analysis = analysis_results.get('units_analysis', {})
+            if units_analysis and isinstance(units_analysis, dict):
+                formatted.append("\n**Componentes Principais (Units):**")
+                units_list = list(units_analysis.items())[:10]  # Aumenta para 10 units
+                for unit_path, unit_data in units_list:
+                    if isinstance(unit_data, dict):
+                        unit_name = unit_path.split('\\')[-1] if '\\' in unit_path else unit_path
+                        unit_type = unit_data.get('unit_type', 'unit')
+                        lines = unit_data.get('lines_count', 0)
+                        methods = unit_data.get('methods', [])
+                        classes = unit_data.get('classes', [])
+                        
+                        # Informações mais específicas sobre cada unit
+                        info_parts = [f"{lines} linhas", f"{len(methods)} métodos"]
+                        if classes:
+                            class_names = [cls.get('name', 'N/A') for cls in classes if isinstance(cls, dict)]
+                            if class_names:
+                                info_parts.append(f"classes: {', '.join(class_names)}")
+                        
+                        formatted.append(f"- **{unit_name}** ({unit_type}): {', '.join(info_parts)}")
+                        
+                        # Adiciona detalhes dos métodos mais importantes
+                        if methods and isinstance(methods, list):
+                            important_methods = [m for m in methods if isinstance(m, dict) and m.get('complexity', 0) > 1][:3]
+                            if important_methods:
+                                method_names = [m.get('name', 'N/A') for m in important_methods]
+                                formatted.append(f"  → Métodos principais: {', '.join(method_names)}")
+            
+            # CORREÇÃO: Análise detalhada de forms com melhor tratamento
+            forms_analysis = analysis_results.get('forms_analysis', {})
+            if forms_analysis and isinstance(forms_analysis, dict):
+                formatted.append("\n**Interfaces (Forms):**")
+                forms_list = list(forms_analysis.items())[:5]
+                for form_path, form_data in forms_list:
+                    if isinstance(form_data, dict):
+                        form_name = form_path.split('\\')[-1] if '\\' in form_path else form_path
+                        classes = form_data.get('classes', [])
+                        methods = form_data.get('methods', [])
+                        
+                        class_info = ""
+                        if classes and isinstance(classes, list) and len(classes) > 0:
+                            main_class = classes[0].get('name', 'N/A') if isinstance(classes[0], dict) else 'N/A'
+                            parent_class = classes[0].get('parent_class', 'N/A') if isinstance(classes[0], dict) else 'N/A'
+                            class_info = f", classe: {main_class} ({parent_class})"
+                        
+                        lines_count = form_data.get('lines_count', 0)
+                        method_count = len(methods) if isinstance(methods, list) else 0
+                        formatted.append(f"- **{form_name}**: {lines_count} linhas, {method_count} métodos{class_info}")
+                        
+                        # Adiciona informações sobre eventos/handlers
+                        if methods and isinstance(methods, list):
+                            event_methods = [m for m in methods if isinstance(m, dict) and ('Click' in m.get('name', '') or 'Event' in m.get('name', ''))]
+                            if event_methods:
+                                event_names = [m.get('name', 'N/A') for m in event_methods[:3]]
+                                formatted.append(f"  → Eventos: {', '.join(event_names)}")
+            
+            # RESULTADO FINAL
+            result = "\n".join(formatted)
+            logger.info(f"✅ Dados formatados: {len(result)} caracteres, {len(formatted)} seções")
+            
+            return result if result else "Nenhum dado específico foi extraído da análise."
+            
+        except Exception as e:
+            logger.error(f"❌ Erro ao formatar dados: {str(e)}")
+            # Fallback para formato JSON mais limpo
+            essential_data = {
+                'project_name': analysis_results.get('metadata', {}).get('project_name', 'N/A'),
+                'total_files': analysis_results.get('metadata', {}).get('total_files_analyzed', 0),
+                'summary': analysis_results.get('summary', {}),
+                'main_functionalities': analysis_results.get('main_functionalities', []),
+                'units_count': len(analysis_results.get('units_analysis', {})),
+                'forms_count': len(analysis_results.get('forms_analysis', {}))
+            }
+            return f"Dados da análise (formato simplificado):\n{json.dumps(essential_data, indent=2, ensure_ascii=False)}"
+    
+
+
+    def _save_documentation_metadata(self, generated_docs: Dict[str, str], 
+                                   analysis_results: Dict[str, Any], project_dir: Path):
+        """Salva metadados da documentação"""
+        try:
+            metadata = {
+                'generation_date': datetime.now().isoformat(),
+                'documents_generated': len(generated_docs),
+                'document_list': list(generated_docs.keys()),
+                'analysis_summary': {
+                    'total_files': analysis_results.get('project_info', {}).get('total_files', 0),
+                    'main_units': len(analysis_results.get('units_analysis', {})),
+                    'has_requirements': 'requirements' in analysis_results,
+                    'has_characteristics': 'characteristics' in analysis_results
+                }
+            }
+            
+            metadata_path = project_dir / "metadata.json"
+            with open(metadata_path, 'w', encoding='utf-8') as f:
+                json.dump(metadata, f, indent=2, ensure_ascii=False)
+                
+            logger.info("✅ Metadados salvos")
+            
+        except Exception as e:
+            logger.error(f"Erro ao salvar metadados: {str(e)}")
+    
+    def _sanitize_filename(self, filename: str) -> str:
+        """Sanitiza nome do arquivo"""
+        import re
+        # Remove caracteres especiais
+        sanitized = re.sub(r'[<>:"/\\|?*]', '_', filename)
+        # Remove espaços extras
+        sanitized = re.sub(r'\s+', '_', sanitized)
+        return sanitized
+    
+    def regenerate_document_with_feedback(self, doc_key: str, original_content: str, 
+                                        feedback: str, analysis_results: Dict[str, Any], 
+                                        project_name: str = "Projeto") -> str:
+        """
+        Regenera documento específico com base no feedback
+        
+        Args:
+            doc_key: Chave do documento
+            original_content: Conteúdo original
+            feedback: Feedback do usuário
+            analysis_results: Dados da análise
+            project_name: Nome do projeto
+            
+        Returns:
+            Novo conteúdo do documento
+        """
+        try:
+            logger.info(f"🔄 Regenerando documento {doc_key} com feedback")
+            
+            # Obtém prompt específico
+            doc_config = self.document_types.get(doc_key, {})
+            base_prompt = self._get_prompt_for_document(doc_config.get('prompt_type', 'analysis'))
+            
+            # Cria prompt com feedback
+            feedback_prompt = f"""
+{base_prompt}
+
+DOCUMENTO ORIGINAL:
+{original_content}
+
+FEEDBACK DO USUÁRIO:
+{feedback}
+
+INSTRUÇÕES:
+- Considere o feedback fornecido
+- Mantenha aspectos corretos do documento original
+- Corrija problemas identificados no feedback
+- Melhore a qualidade e precisão
+- Mantenha formatação markdown
+- Foque em aspectos de backend
+            """
+            
+            # Prepara contexto
+            context = self._prepare_context(analysis_results, project_name, doc_key)
+            
+            # Gera novo conteúdo
+            new_content = self._generate_content_with_llm(feedback_prompt, context)
+            
+            if new_content:
+                # Salva versão atualizada
+                project_dir = self.docs_dir / self._sanitize_filename(project_name)
+                project_dir.mkdir(exist_ok=True)
+                
+                doc_path = project_dir / doc_config.get('filename', f'{doc_key}.md')
+                with open(doc_path, 'w', encoding='utf-8') as f:
+                    f.write(new_content)
+                
+                logger.info(f"✅ Documento {doc_key} regenerado com sucesso")
+                return new_content
+            else:
+                logger.warning(f"⚠️ Falha ao regenerar documento {doc_key}")
+                return original_content
+                
+        except Exception as e:
+            logger.error(f"❌ Erro ao regenerar documento {doc_key}: {str(e)}")
+            return original_content
+    
+    def get_document_content(self, doc_key_or_path: str, project_name: str = "Projeto") -> str:
+        """Obtém conteúdo de um documento específico"""
+        try:
+            # Se for um caminho de arquivo, usa diretamente
+            if os.path.isfile(doc_key_or_path):
+                with open(doc_key_or_path, 'r', encoding='utf-8') as f:
+                    return f.read()
+            
+            # Caso contrário, trata como doc_key
+            doc_config = self.document_types.get(doc_key_or_path, {})
+            filename = doc_config.get('filename', f'{doc_key_or_path}.md')
+            
+            project_dir = self.docs_dir / self._sanitize_filename(project_name)
+            doc_path = project_dir / filename
+            
+            if doc_path.exists():
+                with open(doc_path, 'r', encoding='utf-8') as f:
+                    return f.read()
+            else:
+                return f"Documento não encontrado: {doc_key_or_path}"
+                
+        except Exception as e:
+            logger.error(f"Erro ao ler documento {doc_key_or_path}: {str(e)}")
+            return f"Erro ao carregar documento: {str(e)}"
+    
+    def list_generated_documents(self, project_name: str = "Projeto") -> Dict[str, Dict[str, Any]]:
+        """Lista documentos gerados para um projeto"""
+        try:
+            project_dir = self.docs_dir / self._sanitize_filename(project_name)
+            
+            if not project_dir.exists():
+                return {}
             
             documents = {}
             
-            # 1. Documento de Requisitos
-            requirements_doc = self._generate_requirements_document(analysis_data)
-            req_path = os.path.join(project_dir, "01_Requisitos_Sistema.md")
-            self._save_document(req_path, requirements_doc)
-            documents['requirements'] = req_path
+            for doc_key, doc_config in self.document_types.items():
+                filename = doc_config.get('filename', f'{doc_key}.md')
+                doc_path = project_dir / filename
+                
+                if doc_path.exists():
+                    stat = doc_path.stat()
+                    documents[doc_key] = {
+                        'name': doc_config.get('name', doc_key),
+                        'path': str(doc_path),
+                        'size': stat.st_size,
+                        'modified': datetime.fromtimestamp(stat.st_mtime).isoformat()
+                    }
             
-            # 2. Documento de Funcionalidades
-            functionality_doc = self._generate_functionality_document(analysis_data)
-            func_path = os.path.join(project_dir, "02_Funcionalidades_Sistema.md")
-            self._save_document(func_path, functionality_doc)
-            documents['functionality'] = func_path
-            
-            # 3. Documento de Características Técnicas
-            characteristics_doc = self._generate_characteristics_document(analysis_data)
-            char_path = os.path.join(project_dir, "03_Caracteristicas_Tecnicas.md")
-            self._save_document(char_path, characteristics_doc)
-            documents['characteristics'] = char_path
-            
-            # 4. Documento de Fluxos de Execução
-            execution_flows_doc = self._generate_execution_flows_document(analysis_data)
-            exec_path = os.path.join(project_dir, "04_Fluxos_Execucao.md")
-            self._save_document(exec_path, execution_flows_doc)
-            documents['execution_flows'] = exec_path
-            
-            # 5. Documento de Fluxos de Dados
-            data_flows_doc = self._generate_data_flows_document(analysis_data)
-            data_path = os.path.join(project_dir, "05_Fluxos_Dados.md")
-            self._save_document(data_path, data_flows_doc)
-            documents['data_flows'] = data_path
-            
-            # 6. Documento de Correlações Delphi → Java
-            correlations_doc = self._generate_correlations_document(analysis_data)
-            corr_path = os.path.join(project_dir, "06_Correlacoes_Delphi_Java.md")
-            self._save_document(corr_path, correlations_doc)
-            documents['correlations'] = corr_path
-            
-            # 7. Documento de Análise Técnica Detalhada
-            technical_analysis_doc = self._generate_technical_analysis_document(analysis_data)
-            tech_path = os.path.join(project_dir, "07_Analise_Tecnica_Detalhada.md")
-            self._save_document(tech_path, technical_analysis_doc)
-            documents['technical_analysis'] = tech_path
-            
-            # 8. Documento JSON com dados estruturados
-            json_path = os.path.join(project_dir, "08_Dados_Estruturados.json")
-            self._save_json_document(json_path, analysis_data)
-            documents['structured_data'] = json_path
-            
-            # 9. Resumo Executivo
-            executive_summary_doc = self._generate_executive_summary(analysis_data)
-            summary_path = os.path.join(project_dir, "00_Resumo_Executivo.md")
-            self._save_document(summary_path, executive_summary_doc)
-            documents['executive_summary'] = summary_path
-            
-            # Atualiza lista de documentos gerados
-            self.generated_documents[project_name] = {
-                'project_directory': project_dir,
-                'documents': documents,
-                'generation_date': datetime.now().isoformat(),
-                'metadata': analysis_data.get('metadata', {})
-            }
-            
-            logger.info(f"Documentação completa gerada em: {project_dir}")
             return documents
             
         except Exception as e:
-            logger.error(f"Erro na geração de documentação: {str(e)}")
-            raise Exception(f"Falha na geração de documentação: {str(e)}")
+            logger.error(f"Erro ao listar documentos: {str(e)}")
+            return {}
     
-    def _generate_requirements_document(self, analysis_data: Dict[str, Any]) -> str:
-        """Gera documento de requisitos do sistema"""
-        project_name = analysis_data.get('metadata', {}).get('project_name', 'Sistema')
-        requirements = analysis_data.get('requirements', {})
-        
-        doc = f"""# Requisitos do Sistema - {project_name}
-
-## Informações Gerais
-- **Data da Análise**: {analysis_data.get('metadata', {}).get('analysis_date', 'N/A')}
-- **Versão do Analisador**: {analysis_data.get('metadata', {}).get('analyzer_version', 'N/A')}
-
-## 1. Requisitos Funcionais
-
-Os requisitos funcionais identificados através da análise do código fonte:
-
-"""
-        
-        functional_reqs = requirements.get('functional_requirements', [])
-        if functional_reqs:
-            for i, req in enumerate(functional_reqs, 1):
-                doc += f"### RF{i:03d} - {req.get('title', 'Requisito Funcional')}\n"
-                doc += f"- **Módulo**: {req.get('module', 'N/A')}\n"
-                doc += f"- **Descrição**: {req.get('description', 'N/A')}\n"
-                doc += f"- **Prioridade**: {req.get('priority', 'Média')}\n\n"
-        else:
-            doc += "Nenhum requisito funcional específico foi identificado automaticamente.\n\n"
-        
-        doc += """## 2. Requisitos Não Funcionais
-
-"""
-        
-        non_functional_reqs = requirements.get('non_functional_requirements', [])
-        if non_functional_reqs:
-            for i, req in enumerate(non_functional_reqs, 1):
-                doc += f"### RNF{i:03d} - {req.get('title', 'Requisito Não Funcional')}\n"
-                doc += f"- **Categoria**: {req.get('category', 'N/A')}\n"
-                doc += f"- **Descrição**: {req.get('description', 'N/A')}\n"
-                doc += f"- **Critério de Aceitação**: {req.get('acceptance_criteria', 'N/A')}\n\n"
-        else:
-            doc += "Requisitos não funcionais serão definidos durante a modernização.\n\n"
-        
-        doc += """## 3. Requisitos de Negócio
-
-"""
-        
-        business_reqs = requirements.get('business_requirements', [])
-        if business_reqs:
-            for i, req in enumerate(business_reqs, 1):
-                doc += f"### RN{i:03d} - {req.get('title', 'Requisito de Negócio')}\n"
-                doc += f"- **Área de Negócio**: {req.get('business_area', 'N/A')}\n"
-                doc += f"- **Descrição**: {req.get('description', 'N/A')}\n"
-                doc += f"- **Justificativa**: {req.get('justification', 'N/A')}\n\n"
-        else:
-            doc += "Requisitos de negócio serão levantados com stakeholders.\n\n"
-        
-        doc += """## 4. Requisitos Técnicos
-
-"""
-        
-        technical_reqs = requirements.get('technical_requirements', [])
-        if technical_reqs:
-            for i, req in enumerate(technical_reqs, 1):
-                doc += f"### RT{i:03d} - {req.get('title', 'Requisito Técnico')}\n"
-                doc += f"- **Tecnologia**: {req.get('technology', 'N/A')}\n"
-                doc += f"- **Descrição**: {req.get('description', 'N/A')}\n"
-                doc += f"- **Impacto**: {req.get('impact', 'N/A')}\n\n"
-        else:
-            doc += "Requisitos técnicos serão definidos durante a arquitetura da solução.\n\n"
-        
-        return doc
-    
-    def _generate_functionality_document(self, analysis_data: Dict[str, Any]) -> str:
-        """Gera documento de funcionalidades do sistema"""
-        project_name = analysis_data.get('metadata', {}).get('project_name', 'Sistema')
-        units_analysis = analysis_data.get('units_analysis', {})
-        business_logic = analysis_data.get('business_logic', {})
-        
-        doc = f"""# Funcionalidades do Sistema - {project_name}
-
-## Visão Geral das Funcionalidades
-
-Este documento detalha as funcionalidades identificadas no sistema legado através da análise do código fonte.
-
-## 1. Módulos Principais
-
-"""
-        
-        # Agrupa funcionalidades por módulo/unit
-        for unit_name, unit_data in units_analysis.items():
-            unit_type = unit_data.get('unit_type', 'unknown')
+    def get_documentation_summary(self, project_name: str = "Projeto") -> Dict[str, Any]:
+        """Obtém resumo da documentação gerada"""
+        try:
+            project_dir = self.docs_dir / self._sanitize_filename(project_name)
+            metadata_path = project_dir / "metadata.json"
             
-            doc += f"### {unit_name} ({unit_type.title()})\n\n"
-            
-            if unit_type == 'form':
-                doc += "**Tipo**: Interface de Usuário\n"
-                doc += "**Funcionalidades**:\n"
-                
-                # Extrai funcionalidades de formulários
-                procedures = unit_data.get('procedures_functions', [])
-                for proc in procedures:
-                    if 'click' in proc.get('name', '').lower() or 'event' in proc.get('purpose', ''):
-                        doc += f"- {proc.get('name', 'N/A')}: {proc.get('purpose', 'Ação do usuário')}\n"
-            
-            elif unit_type == 'datamodule':
-                doc += "**Tipo**: Acesso a Dados\n"
-                doc += "**Funcionalidades**:\n"
-                
-                # Extrai operações de banco de dados
-                db_operations = unit_data.get('database_operations', [])
-                for db_op in db_operations:
-                    doc += f"- {db_op.get('name', 'N/A')}: {db_op.get('description', 'Operação de dados')}\n"
-            
+            if metadata_path.exists():
+                with open(metadata_path, 'r', encoding='utf-8') as f:
+                    return json.load(f)
             else:
-                doc += "**Tipo**: Lógica de Negócio\n"
-                doc += "**Funcionalidades**:\n"
+                return {}
                 
-                procedures = unit_data.get('procedures_functions', [])
-                for proc in procedures[:5]:  # Limita a 5 principais
-                    doc += f"- {proc.get('name', 'N/A')}: {proc.get('purpose', 'Processamento')}\n"
-            
-            doc += "\n"
-        
-        doc += """## 2. Regras de Negócio Identificadas
-
-"""
-        
-        business_rules = business_logic.get('business_rules', [])
-        if business_rules:
-            for i, rule in enumerate(business_rules, 1):
-                doc += f"### RN{i:03d} - {rule.get('unit', 'N/A')}\n"
-                doc += f"**Regra**: {rule.get('rule', 'N/A')}\n\n"
-        else:
-            doc += "Regras de negócio serão identificadas durante análise detalhada.\n\n"
-        
-        doc += """## 3. Validações do Sistema
-
-"""
-        
-        validations = business_logic.get('validations', [])
-        if validations:
-            for validation in validations:
-                doc += f"- **{validation.get('function', 'N/A')}** (em {validation.get('unit', 'N/A')})\n"
-                doc += f"  - Descrição: {validation.get('description', 'Validação de dados')}\n"
-        else:
-            doc += "Validações serão mapeadas durante análise detalhada.\n\n"
-        
-        doc += """## 4. Cálculos e Processamentos
-
-"""
-        
-        calculations = business_logic.get('calculations', [])
-        if calculations:
-            for calc in calculations:
-                doc += f"- **{calc.get('name', 'N/A')}** (em {calc.get('unit', 'N/A')})\n"
-                doc += f"  - Tipo: {calc.get('type', 'Cálculo')}\n"
-        else:
-            doc += "Cálculos serão identificados durante análise detalhada.\n\n"
-        
-        return doc
-    
-    def _generate_characteristics_document(self, analysis_data: Dict[str, Any]) -> str:
-        """Gera documento de características técnicas"""
-        project_name = analysis_data.get('metadata', {}).get('project_name', 'Sistema')
-        characteristics = analysis_data.get('characteristics', {})
-        project_info = analysis_data.get('project_info', {})
-        
-        doc = f"""# Características Técnicas - {project_name}
-
-## 1. Arquitetura do Sistema
-
-- **Padrão Arquitetural**: {characteristics.get('architecture_pattern', 'Não identificado')}
-- **Tipo de Aplicação**: {project_info.get('architecture_type', 'Desktop')}
-- **Versão do Delphi**: {project_info.get('delphi_version', 'Não identificada')}
-
-## 2. Stack Tecnológico
-
-"""
-        
-        tech_stack = characteristics.get('technology_stack', [])
-        if tech_stack:
-            for tech in tech_stack:
-                doc += f"- {tech}\n"
-        else:
-            doc += "- Delphi/Object Pascal\n- Componentes VCL\n- Banco de dados (a identificar)\n"
-        
-        doc += f"""
-
-## 3. Métricas de Complexidade
-
-- **Nível de Complexidade**: {characteristics.get('complexity_level', 'Médio')}
-- **Score de Manutenibilidade**: {characteristics.get('maintainability_score', 0.0):.2f}
-- **Prontidão para Modernização**: {characteristics.get('modernization_readiness', 'Avaliar')}
-
-## 4. Estrutura do Projeto
-
-- **Total de Arquivos**: {project_info.get('total_files', 0)}
-- **Units Pascal**: {project_info.get('file_counts', {}).get('pascal_units', 0)}
-- **Formulários**: {project_info.get('file_counts', {}).get('forms', 0)}
-- **Projetos**: {project_info.get('file_counts', {}).get('projects', 0)}
-
-## 5. Pontos Fortes do Sistema
-
-"""
-        
-        strengths = characteristics.get('strengths', [])
-        if strengths:
-            for strength in strengths:
-                doc += f"- {strength}\n"
-        else:
-            doc += "- Funcionalidade consolidada\n- Base de código existente\n- Conhecimento do domínio\n"
-        
-        doc += f"""
-
-## 6. Pontos de Melhoria
-
-"""
-        
-        weaknesses = characteristics.get('weaknesses', [])
-        if weaknesses:
-            for weakness in weaknesses:
-                doc += f"- {weakness}\n"
-        else:
-            doc += "- Tecnologia legada\n- Possível acoplamento alto\n- Documentação limitada\n"
-        
-        doc += f"""
-
-## 7. Fatores de Risco
-
-"""
-        
-        risk_factors = characteristics.get('risk_factors', [])
-        if risk_factors:
-            for risk in risk_factors:
-                doc += f"- {risk}\n"
-        else:
-            doc += "- Dependências de bibliotecas legadas\n- Complexidade de migração\n- Perda de conhecimento\n"
-        
-        return doc
-    
-    def _generate_execution_flows_document(self, analysis_data: Dict[str, Any]) -> str:
-        """Gera documento de fluxos de execução"""
-        project_name = analysis_data.get('metadata', {}).get('project_name', 'Sistema')
-        execution_flows = analysis_data.get('execution_flows', {})
-        
-        doc = f"""# Fluxos de Execução - {project_name}
-
-## 1. Sequência de Inicialização
-
-"""
-        
-        startup_sequence = execution_flows.get('startup_sequence', [])
-        if startup_sequence:
-            for i, step in enumerate(startup_sequence, 1):
-                doc += f"{i}. {step.get('description', 'Passo de inicialização')}\n"
-        else:
-            doc += "1. Carregamento da aplicação principal\n2. Inicialização de módulos\n3. Conexão com banco de dados\n4. Apresentação da interface principal\n"
-        
-        doc += """
-
-## 2. Fluxos de Trabalho do Usuário
-
-"""
-        
-        user_workflows = execution_flows.get('user_workflows', [])
-        if user_workflows:
-            for workflow in user_workflows:
-                doc += f"### {workflow.get('name', 'Fluxo de Trabalho')}\n"
-                doc += f"**Módulo**: {workflow.get('module', 'N/A')}\n"
-                doc += f"**Descrição**: {workflow.get('description', 'N/A')}\n"
-                
-                steps = workflow.get('steps', [])
-                if steps:
-                    doc += "**Passos**:\n"
-                    for i, step in enumerate(steps, 1):
-                        doc += f"{i}. {step}\n"
-                doc += "\n"
-        else:
-            doc += "Fluxos de trabalho serão mapeados durante análise detalhada.\n\n"
-        
-        doc += """## 3. Tratamento de Erros
-
-"""
-        
-        error_handling = execution_flows.get('error_handling_flows', [])
-        if error_handling:
-            for error_flow in error_handling:
-                doc += f"- **{error_flow.get('type', 'Erro')}**: {error_flow.get('handling', 'Tratamento padrão')}\n"
-        else:
-            doc += "- Tratamento de exceções genérico\n- Logs de erro do sistema\n- Mensagens de erro para usuário\n"
-        
-        doc += """
-
-## 4. Sequência de Finalização
-
-"""
-        
-        shutdown_sequence = execution_flows.get('shutdown_sequence', [])
-        if shutdown_sequence:
-            for i, step in enumerate(shutdown_sequence, 1):
-                doc += f"{i}. {step.get('description', 'Passo de finalização')}\n"
-        else:
-            doc += "1. Salvamento de dados pendentes\n2. Fechamento de conexões\n3. Liberação de recursos\n4. Finalização da aplicação\n"
-        
-        return doc
-    
-    def _generate_data_flows_document(self, analysis_data: Dict[str, Any]) -> str:
-        """Gera documento de fluxos de dados"""
-        project_name = analysis_data.get('metadata', {}).get('project_name', 'Sistema')
-        data_flows = analysis_data.get('data_flows', {})
-        
-        doc = f"""# Fluxos de Dados - {project_name}
-
-## 1. Fluxos de Banco de Dados
-
-"""
-        
-        database_flows = data_flows.get('database_flows', [])
-        if database_flows:
-            for flow in database_flows:
-                doc += f"### {flow.get('source_unit', 'N/A')}\n"
-                doc += f"- **Tipo de Operação**: {flow.get('operation_type', 'N/A')}\n"
-                doc += f"- **Tabelas Envolvidas**: {', '.join(flow.get('tables_involved', []))}\n"
-                doc += f"- **Direção dos Dados**: {flow.get('data_direction', 'N/A')}\n"
-                doc += f"- **Descrição**: {flow.get('description', 'N/A')}\n\n"
-        else:
-            doc += "Fluxos de banco de dados serão mapeados durante análise detalhada.\n\n"
-        
-        doc += """## 2. Fluxos entre Formulários
-
-"""
-        
-        form_flows = data_flows.get('form_data_flows', [])
-        if form_flows:
-            for flow in form_flows:
-                doc += f"- **De**: {flow.get('source', 'N/A')} **Para**: {flow.get('target', 'N/A')}\n"
-                doc += f"  - Dados: {flow.get('data_type', 'N/A')}\n"
-                doc += f"  - Método: {flow.get('method', 'N/A')}\n"
-        else:
-            doc += "Fluxos entre formulários serão identificados durante análise.\n\n"
-        
-        doc += """## 3. Fluxos entre Módulos
-
-"""
-        
-        inter_unit_flows = data_flows.get('inter_unit_flows', [])
-        if inter_unit_flows:
-            for flow in inter_unit_flows:
-                doc += f"- **{flow.get('source_unit', 'N/A')}** → **{flow.get('target_unit', 'N/A')}**\n"
-                doc += f"  - Interface: {flow.get('interface', 'N/A')}\n"
-                doc += f"  - Dados: {flow.get('data_description', 'N/A')}\n"
-        else:
-            doc += "Fluxos entre módulos serão mapeados durante análise.\n\n"
-        
-        doc += """## 4. Fluxos Externos
-
-"""
-        
-        external_flows = data_flows.get('external_flows', [])
-        if external_flows:
-            for flow in external_flows:
-                doc += f"- **Sistema Externo**: {flow.get('external_system', 'N/A')}\n"
-                doc += f"  - Tipo de Integração: {flow.get('integration_type', 'N/A')}\n"
-                doc += f"  - Dados Trocados: {flow.get('data_exchanged', 'N/A')}\n"
-        else:
-            doc += "Integrações externas serão identificadas durante análise.\n\n"
-        
-        return doc
-    
-    def _generate_correlations_document(self, analysis_data: Dict[str, Any]) -> str:
-        """Gera documento de correlações Delphi → Java"""
-        project_name = analysis_data.get('metadata', {}).get('project_name', 'Sistema')
-        correlations = analysis_data.get('correlations', {})
-        
-        doc = f"""# Correlações Delphi → Java Spring - {project_name}
-
-## Introdução
-
-Este documento mapeia como cada componente/funcionalidade do sistema Delphi deve ser implementado no Java Spring Boot.
-
-## 1. Mapeamento de Componentes
-
-"""
-        
-        component_mappings = correlations.get('component_mappings', [])
-        if component_mappings:
-            for mapping in component_mappings:
-                doc += f"### {mapping.get('delphi_component', 'N/A')}\n"
-                doc += f"**Delphi**: {mapping.get('delphi_description', 'N/A')}\n"
-                doc += f"**Java Spring**: {mapping.get('java_equivalent', 'N/A')}\n"
-                doc += f"**Justificativa**: {mapping.get('rationale', 'N/A')}\n"
-                doc += f"**Exemplo de Implementação**:\n"
-                doc += f"```java\n{mapping.get('java_example', '// Exemplo a ser implementado')}\n```\n\n"
-        else:
-            doc += """### TDataModule → Service + Repository
-
-**Delphi**: Módulo de dados com queries e lógica de acesso
-**Java Spring**: Separação em Service (lógica) e Repository (acesso)
-
-```java
-@Service
-public class UserService {
-    @Autowired
-    private UserRepository userRepository;
-    
-    public List<User> findActiveUsers() {
-        return userRepository.findByActiveTrue();
-    }
-}
-```
-
-### TForm → RestController
-
-**Delphi**: Formulário com eventos de botão
-**Java Spring**: Controller REST com endpoints
-
-```java
-@RestController
-@RequestMapping("/api/users")
-public class UserController {
-    @Autowired
-    private UserService userService;
-    
-    @GetMapping
-    public ResponseEntity<List<User>> getUsers() {
-        return ResponseEntity.ok(userService.findActiveUsers());
-    }
-}
-```
-
-"""
-        
-        doc += """## 2. Mapeamento de Padrões
-
-"""
-        
-        pattern_mappings = correlations.get('pattern_mappings', [])
-        if pattern_mappings:
-            for pattern in pattern_mappings:
-                doc += f"### {pattern.get('delphi_pattern', 'N/A')}\n"
-                doc += f"**Padrão Delphi**: {pattern.get('delphi_description', 'N/A')}\n"
-                doc += f"**Padrão Java**: {pattern.get('java_pattern', 'N/A')}\n"
-                doc += f"**Vantagens**: {pattern.get('advantages', 'N/A')}\n\n"
-        else:
-            doc += "Padrões de migração serão definidos durante implementação.\n\n"
-        
-        doc += """## 3. Mapeamento de Tecnologias
-
-"""
-        
-        tech_mappings = correlations.get('technology_mappings', [])
-        if tech_mappings:
-            for tech in tech_mappings:
-                doc += f"- **{tech.get('delphi_tech', 'N/A')}** → **{tech.get('java_tech', 'N/A')}**\n"
-                doc += f"  - Motivo: {tech.get('reason', 'N/A')}\n"
-        else:
-            doc += """- **Delphi VCL** → **Spring Boot REST API + Frontend**
-- **ADO/DBExpress** → **Spring Data JPA**
-- **TQuery** → **JpaRepository methods**
-- **TDataSource** → **Service layer**
-- **Exception handling** → **@ExceptionHandler**
-
-"""
-        
-        return doc
-    
-    def _generate_technical_analysis_document(self, analysis_data: Dict[str, Any]) -> str:
-        """Gera documento de análise técnica detalhada"""
-        project_name = analysis_data.get('metadata', {}).get('project_name', 'Sistema')
-        units_analysis = analysis_data.get('units_analysis', {})
-        
-        doc = f"""# Análise Técnica Detalhada - {project_name}
-
-## Resumo da Análise
-
-Este documento contém a análise técnica detalhada de cada componente do sistema.
-
-"""
-        
-        for unit_name, unit_data in units_analysis.items():
-            doc += f"## {unit_name}\n\n"
-            doc += f"**Tipo**: {unit_data.get('unit_type', 'N/A').title()}\n"
-            doc += f"**Arquivo**: {os.path.basename(unit_data.get('file_path', 'N/A'))}\n"
-            doc += f"**Tamanho**: {unit_data.get('lines_count', 0)} linhas\n\n"
-            
-            # Complexidade
-            complexity = unit_data.get('complexity_metrics', {})
-            doc += "### Métricas de Complexidade\n"
-            doc += f"- **Complexidade Ciclomática**: {complexity.get('cyclomatic_complexity', 0)}\n"
-            doc += f"- **Número de Funções**: {complexity.get('function_count', 0)}\n"
-            doc += f"- **Número de Classes**: {complexity.get('class_count', 0)}\n"
-            doc += f"- **Profundidade de Aninhamento**: {complexity.get('nesting_depth', 0)}\n\n"
-            
-            # Classes
-            classes = unit_data.get('classes', [])
-            if classes:
-                doc += "### Classes Identificadas\n"
-                for cls in classes:
-                    doc += f"- **{cls.get('name', 'N/A')}** (herda de {cls.get('parent_class', 'N/A')})\n"
-                    doc += f"  - Propósito: {cls.get('purpose', 'N/A')}\n"
-                doc += "\n"
-            
-            # Procedures/Functions
-            procedures = unit_data.get('procedures_functions', [])
-            if procedures:
-                doc += "### Principais Funções\n"
-                for proc in procedures[:5]:  # Top 5
-                    doc += f"- **{proc.get('name', 'N/A')}** ({proc.get('type', 'N/A')})\n"
-                    doc += f"  - Complexidade: {proc.get('complexity', 0)}\n"
-                    doc += f"  - Propósito: {proc.get('purpose', 'N/A')}\n"
-                doc += "\n"
-            
-            # Operações de banco
-            db_ops = unit_data.get('database_operations', [])
-            if db_ops:
-                doc += "### Operações de Banco de Dados\n"
-                for db_op in db_ops:
-                    doc += f"- {db_op.get('name', 'N/A')}: {db_op.get('description', 'N/A')}\n"
-                doc += "\n"
-            
-            doc += "---\n\n"
-        
-        return doc
-    
-    def _generate_executive_summary(self, analysis_data: Dict[str, Any]) -> str:
-        """Gera resumo executivo da análise"""
-        project_name = analysis_data.get('metadata', {}).get('project_name', 'Sistema')
-        project_info = analysis_data.get('project_info', {})
-        characteristics = analysis_data.get('characteristics', {})
-        
-        doc = f"""# Resumo Executivo - Análise do Sistema {project_name}
-
-## Visão Geral
-
-Este documento apresenta um resumo executivo da análise realizada no sistema legado {project_name}, incluindo suas características principais, complexidade e recomendações para modernização.
-
-## Características do Sistema
-
-- **Arquivos Analisados**: {analysis_data.get('metadata', {}).get('total_files_analyzed', 0)}
-- **Tipo de Aplicação**: {project_info.get('architecture_type', 'Desktop')}
-- **Complexidade**: {characteristics.get('complexity_level', 'Média')}
-- **Prontidão para Modernização**: {characteristics.get('modernization_readiness', 'Avaliar')}
-
-## Resumo Técnico
-
-### Estrutura do Projeto
-- Units Pascal: {project_info.get('file_counts', {}).get('pascal_units', 0)}
-- Formulários: {project_info.get('file_counts', {}).get('forms', 0)}
-- Módulos de Dados: Identificados durante análise
-
-### Tecnologias Identificadas
-- Linguagem: Delphi/Object Pascal
-- Interface: VCL (Visual Component Library)
-- Banco de Dados: A identificar durante análise detalhada
-
-## Recomendações
-
-### Estratégia de Modernização
-1. **Análise Detalhada**: Aprofundar análise de regras de negócio
-2. **Migração por Etapas**: Priorizar módulos de menor complexidade
-3. **Validação Contínua**: Testes de funcionalidade durante migração
-
-### Tecnologias Alvo
-- **Backend**: Java Spring Boot
-- **Frontend**: React/Angular (a definir)
-- **Banco de Dados**: Manter compatibilidade existente
-- **API**: REST para integração
-
-## Próximos Passos
-
-1. Revisão da documentação gerada
-2. Validação com stakeholders
-3. Definição de cronograma de modernização
-4. Início da implementação por módulos priorizados
-
----
-
-**Data da Análise**: {analysis_data.get('metadata', {}).get('analysis_date', 'N/A')}
-**Ferramenta**: JUNIM - Java Unified Interoperability Migration v{analysis_data.get('metadata', {}).get('analyzer_version', '1.0')}
-"""
-        
-        return doc
-    
-    def _save_document(self, file_path: str, content: str):
-        """Salva documento em arquivo"""
-        try:
-            with open(file_path, 'w', encoding='utf-8') as file:
-                file.write(content)
-            logger.info(f"Documento salvo: {file_path}")
         except Exception as e:
-            logger.error(f"Erro ao salvar documento {file_path}: {str(e)}")
+            logger.error(f"Erro ao obter resumo: {str(e)}")
+            return {}
     
-    def _save_json_document(self, file_path: str, data: Dict[str, Any]):
-        """Salva dados estruturados em JSON"""
-        try:
-            with open(file_path, 'w', encoding='utf-8') as file:
-                json.dump(data, file, indent=2, ensure_ascii=False, default=str)
-            logger.info(f"Dados JSON salvos: {file_path}")
-        except Exception as e:
-            logger.error(f"Erro ao salvar JSON {file_path}: {str(e)}")
     
-    def get_generated_documents(self) -> Dict[str, Any]:
-        """Retorna lista de documentos gerados"""
-        return self.generated_documents
-    
-    def get_document_content(self, document_path: str) -> str:
-        """Lê conteúdo de um documento gerado"""
-        try:
-            with open(document_path, 'r', encoding='utf-8') as file:
-                return file.read()
-        except Exception as e:
-            logger.error(f"Erro ao ler documento {document_path}: {str(e)}")
-            return f"Erro ao carregar documento: {str(e)}"

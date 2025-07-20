@@ -78,6 +78,10 @@ class JavaBuilder:
                 # Processa conteúdo
                 processed_content = self._process_file_content(content, package_name, file_path)
                 
+                # Garante que o conteúdo processado seja uma string
+                if not isinstance(processed_content, str):
+                    processed_content = str(processed_content)
+                
                 # Escreve arquivo
                 with open(full_path, 'w', encoding='utf-8') as f:
                     f.write(processed_content)
@@ -89,9 +93,21 @@ class JavaBuilder:
             logger.error(f"Erro ao processar arquivos: {str(e)}")
             raise
     
-    def _process_file_content(self, content: str, package_name: str, file_path: str) -> str:
+    def _process_file_content(self, content, package_name: str, file_path: str) -> str:
         """Processa conteúdo de um arquivo específico"""
         try:
+            # Se o conteúdo for um dict, extrai o conteúdo da chave 'content'
+            if isinstance(content, dict):
+                if 'content' in content:
+                    content = content['content']
+                else:
+                    # Se for um dict sem 'content', converte para string
+                    content = str(content)
+            
+            # Garante que o conteúdo seja uma string
+            if not isinstance(content, str):
+                content = str(content)
+            
             # Se o conteúdo não tem package declaration, adiciona
             if file_path.endswith('.java') and 'package ' not in content:
                 # Extrai package baseado no caminho
@@ -113,7 +129,7 @@ class JavaBuilder:
             
         except Exception as e:
             logger.warning(f"Erro ao processar conteúdo do arquivo {file_path}: {str(e)}")
-            return content
+            return str(content) if content else ""
     
     def _extract_package_from_path(self, file_path: str, base_package: str) -> Optional[str]:
         """Extrai nome do package baseado no caminho do arquivo"""

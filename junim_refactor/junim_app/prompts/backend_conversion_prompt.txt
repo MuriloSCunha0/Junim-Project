@@ -1,0 +1,89 @@
+## CONVERSÃO DE BACKEND DELPHI PARA SPRING BOOT
+
+Execute conversão sistemática focando EXCLUSIVAMENTE no backend:
+
+### PROTOCOLO DE CONVERSÃO
+
+**1. ANÁLISE DO DOMÍNIO**
+- Identifique o core business do sistema
+- Mapeie entidades principais e relacionamentos
+- Documente regras de negócio específicas
+- Identifique operações CRUD críticas
+
+**2. ARQUITETURA SPRING BOOT**
+- Estrutura de pacotes Java organizacional
+- Configuração de beans e dependências
+- Configuração de banco de dados
+- Configuração de segurança (se aplicável)
+
+**3. CAMADAS DE IMPLEMENTAÇÃO**
+
+**A) ENTIDADES JPA**
+- Mapeie tabelas Delphi para @Entity
+- Configure relacionamentos @OneToMany, @ManyToOne
+- Implemente validações com Bean Validation
+- Configure auditoria e versionamento
+
+**B) REPOSITORIES**
+- Crie interfaces @Repository para cada entidade
+- Implemente queries customizadas com @Query
+- Configure paginação e ordenação
+- Implemente métodos de busca específicos
+
+**C) SERVICES**
+- Implemente lógica de negócio em @Service
+- Configure transações com @Transactional
+- Implemente validações de negócio
+- Configure cache quando apropriado
+
+**D) CONTROLLERS**
+- Crie APIs REST com @RestController
+- Implemente endpoints para operações CRUD
+- Configure validação de entrada
+- Implemente tratamento de erros
+
+**E) DTOS**
+- Crie DTOs para transferência de dados
+- Implemente mapeamento entre entidades e DTOs
+- Configure validações de entrada
+- Implemente serialização customizada
+
+### DIRETRIZES OBRIGATÓRIAS
+
+**ESTRUTURA DO CÓDIGO**
+```
+src/main/java/com/empresa/sistema/
+├── config/          # Configurações Spring
+├── entity/          # Entidades JPA
+├── repository/      # Interfaces Repository
+├── service/         # Lógica de negócio
+├── controller/      # Controllers REST
+├── dto/            # Data Transfer Objects
+├── exception/      # Tratamento de exceções
+└── util/           # Utilitários
+```
+
+**PADRÕES OBRIGATÓRIOS**
+- Use @Slf4j para logging
+- Implemente tratamento de exceções global
+- Configure profiles (dev, prod)
+- Use Spring Boot Actuator
+- Configure OpenAPI/Swagger
+- Implemente testes unitários
+
+### CRITÉRIOS DE QUALIDADE
+✅ Código Java 11+ com Spring Boot 2.7+
+✅ Arquitetura em camadas bem definidas
+✅ Injeção de dependências configurada
+✅ Transações configuradas corretamente
+✅ Validações implementadas
+✅ Documentação OpenAPI gerada
+✅ Testes unitários incluídos
+
+### INSTRUÇÕES CRÍTICAS
+🚨 **IGNORE completamente aspectos de UI**
+🚨 **FOQUE apenas em backend e APIs REST**
+🚨 **MANTENHA regras de negócio do Delphi**
+🚨 **IMPLEMENTE validações rigorosas**
+🚨 **CONFIGURE segurança adequada**
+🚨 **DOCUMENTE APIs com OpenAPI**

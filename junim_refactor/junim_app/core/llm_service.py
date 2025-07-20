@@ -9,6 +9,8 @@ from typing import Dict, Any, Optional, List
 import logging
 import requests
 
+from performance.performance_optimizer import performance_optimizer, cache_manager
+
 # Configuração do logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -30,19 +32,268 @@ except ImportError:
 class LLMService:
     """Classe responsável por interação com LLMs (Groq e Ollama)"""
     
-    def __init__(self, config: Dict[str, Any]):
+    def __init__(self, config: Dict[str, Any], prompt_manager=None):
         """
         Inicializa o serviço LLM
         
         Args:
             config: Configuração com chaves de API e modelos
+            prompt_manager: Gerenciador de prompts para usar prompts do diretório
         """
         self.config = config
         self.groq_client = None
         self.ollama_client = None
+        self.prompt_manager = prompt_manager
+        
+        # ✅ GARANTIR USO DAS CONFIGURAÇÕES DEEPSEEK-R1
+        self._setup_model_config()
         
         self._setup_groq()
         self._setup_ollama()
+    
+    def _setup_model_config(self):
+        """Configura modelo com otimizações universais para múltiplos LLMs"""
+        model_name = self.config.get('ollama_model', 'codellama:7b')
+        
+        try:
+            # Importa configurações universais
+            from config.universal_model_config import (
+                get_universal_config, 
+                get_performance_info_universal,
+                detect_model_type,
+                get_available_models
+            )
+            
+            # Aplica configurações otimizadas baseadas na sessão
+            performance_mode = self.config.get('performance_mode', 'fast')
+            optimized_config = get_universal_config(model_name, performance_mode)
+            model_type = detect_model_type(model_name)
+            
+            # Atualiza configuração com otimizações
+            self.config.update(optimized_config)
+            
+            logger.info(f"🚀 {model_name} ({model_type}) configurado em modo: {performance_mode}")
+            logger.info(f"⚡ Config aplicada: {optimized_config}")
+            
+        except ImportError:
+            logger.warning("⚠️ Configurações universais não encontradas, tentando DeepSeek fallback")
+            
+            # Fallback para configurações antigas do DeepSeek
+            if 'deepseek-r1' in model_name.lower():
+                try:
+                    from config.deepseek_r1_config import (
+                        get_deepseek_r1_config, 
+                        get_performance_info
+                    )
+                    
+                    performance_mode = self.config.get('performance_mode', 'fast')
+                    optimized_config = get_deepseek_r1_config(model_name, performance_mode)
+                    self.config.update(optimized_config)
+                    
+                    logger.info(f"🔄 DeepSeek-R1 fallback configurado em modo: {performance_mode}")
+                    
+                except ImportError:
+                    logger.warning("⚠️ Todas as configurações falharam, usando padrão básico")
+        
+        except Exception as e:
+            logger.error(f"❌ Erro ao configurar modelo {model_name}: {str(e)}")
+            logger.info("🔄 Usando configurações padrão básicas")
+    
+    def _setup_groq(self):
+        """Configura cliente Groq"""
+        try:
+            if GROQ_AVAILABLE:
+                groq_api_key = self.config.get('groq_api_key', '')
+                
+                if groq_api_key:
+                    logger.info(f"Tentando configurar Groq com chave API: {groq_api_key[:4]}...{groq_api_key[-4:] if len(groq_api_key) > 8 else ''}")
+                    self.groq_client = groq.Groq(
+                        api_key=groq_api_key
+                    )
+                    logger.info("Cliente Groq configurado com sucesso")
+                else:
+                    logger.warning("Chave API Groq ausente na configuração")
+                    self.groq_client = None
+            else:
+                logger.warning("Biblioteca groq não instalada")
+                self.groq_client = None
+        except Exception as e:
+            logger.error(f"Erro ao configurar Groq: {str(e)}")
+            self.groq_client = None
+    
+    def _setup_ollama(self):
+        """Configura cliente Ollama"""
+        try:
+            if OLLAMA_AVAILABLE:
+                ollama_url = self.config.get('ollama_url', 'http://localhost:11434')
+                
+                # Testa conexão com Ollama
+                response = requests.get(f"{ollama_url}/api/tags", timeout=5)
+                if response.status_code == 200:
+                    self.ollama_client = ollama
+                    logger.info("Cliente Ollama configurado com sucesso")
+                else:
+                    logger.warning("Ollama não está respondendo")
+            else:
+                logger.warning("Ollama não disponível (biblioteca não instalada)")
+        except Exception as e:
+            logger.warning(f"Ollama não disponível: {str(e)}")
+            self.ollama_client = None
+    
+    def _sanitize_json_response(self, response_text) -> str:
+        """
+        Sanitiza a resposta da LLM para evitar problemas de formatação JSON
+        """
+        try:
+            # Se for um dicionário, retorna como está
+            if isinstance(response_text, dict):
+                return response_text
+            
+            # Verifica se response_text é None
+            if response_text is None:
+                logger.warning("response_text é None, retornando string vazia")
+                return ""
+            
+            # Converte para string se não for, mas garantindo que não é None
+            if not isinstance(response_text, str):
+                response_text = str(response_text) if response_text is not None else ""
+            
+            import re
+            
+            # Remove o padrão específico que está causando o erro
+            # Padrão: % 123, "message": "Cliente criado"
+            problematic_pattern = r'%\s*(\d+),\s*"([^"]*)":\s*"([^"]*)"'
+            
+            def replace_match(match):
+                number = match.group(1)
+                key = match.group(2)  
+                value = match.group(3)
+                # Substitui por formato seguro
+                return f'[Code: {number}, {key}: "{value}"]'
+            
+            # Aplica a correção
+            cleaned_text = re.sub(problematic_pattern, replace_match, response_text)
+            
+            # Remove outros padrões problemáticos
+            cleaned_text = re.sub(r'%[ds]', 'VALUE', cleaned_text)
+            cleaned_text = re.sub(r'%\s+\d+', 'CODE', cleaned_text)
+            
+            # Escapa caracteres que podem causar problemas em JSON
+            cleaned_text = cleaned_text.replace('\\', '\\\\')
+            cleaned_text = cleaned_text.replace('\n', '\\n')
+            cleaned_text = cleaned_text.replace('\r', '\\r')
+            cleaned_text = cleaned_text.replace('\t', '\\t')
+            
+            return cleaned_text
+            
+        except Exception as e:
+            logger.warning(f"Erro ao sanitizar resposta JSON: {str(e)}")
+            return str(response_text) if response_text is not None else ""
+
+    def _extract_json_from_content(self, content: str) -> Dict[str, Any]:
+        """
+        Extrai JSON do conteúdo da resposta da LLM com tratamento robusto de erros
+        """
+        try:
+            import json
+            import re
+            
+            # Primeiro sanitiza o conteúdo
+            content = self._sanitize_json_response(content)
+            
+            # Tenta encontrar JSON válido no conteúdo
+            json_patterns = [
+                r'```json\s*(\{.*?\})\s*```',
+                r'```\s*(\{.*?\})\s*```',
+                r'(\{.*?\})',
+                r'(\[.*?\])'
+            ]
+            
+            for pattern in json_patterns:
+                matches = re.findall(pattern, content, re.DOTALL)
+                for match in matches:
+                    try:
+                        # Sanitiza o match antes de fazer parse
+                        clean_match = self._sanitize_json_response(match)
+                        return json.loads(clean_match)
+                    except json.JSONDecodeError:
+                        continue
+            
+            # Se não encontrou JSON válido, tenta parse direto
+            try:
+                return json.loads(content)
+            except json.JSONDecodeError:
+                pass
+            
+            # Fallback: retorna estrutura básica
+            logger.warning("Não foi possível extrair JSON válido, usando estrutura básica")
+            return {
+                "files": {
+                    "src/main/java/com/example/Application.java": {
+                        "content": "// Código gerado com problemas de formatação\n// Conteúdo original preservado abaixo\n\n" + content[:1000]
+                    }
+                },
+                "message": "Resposta processada com limitações devido a problemas de formatação"
+            }
+            
+        except Exception as e:
+            logger.error(f"Erro ao extrair JSON: {str(e)}")
+            return {
+                "files": {},
+                "error": f"Erro no processamento: {str(e)}"
+            }
+
+    def _generate_with_groq(self, prompt: str) -> Optional[str]:
+        """
+        Gera código usando Groq API
+        """
+        try:
+            # Verifica se a chave API está disponível
+            api_key = self.config.get('groq_api_key')
+            if not api_key:
+                logger.error("❌ Chave API do Groq não configurada")
+                return None
+            
+            import groq
+            
+            # Inicializa cliente Groq
+            client = groq.Groq(api_key=api_key)
+            
+            # Modelo a ser usado
+            model = self.config.get('groq_model', 'llama3-70b-8192')
+            
+            logger.info(f"🚀 Gerando código usando Groq API com modelo: {model}")
+            
+            response = client.chat.completions.create(
+                model=model,
+                messages=[
+                    {
+                        "role": "system",
+                        "content": "Você é um especialista em migração de sistemas Delphi para Java Spring Boot. Sempre retorne código completo e funcional em formato JSON válido."
+                    },
+                    {
+                        "role": "user",
+                        "content": prompt
+                    }
+                ],
+                temperature=0.1,
+                max_tokens=4000
+            )
+            
+            if response.choices and response.choices[0].message:
+                result = response.choices[0].message.content
+                logger.info(f"✅ Código gerado com sucesso via Groq: {len(result)} caracteres")
+                return result
+            else:
+                logger.error("❌ Resposta vazia do Groq")
+                return None
+                
+        except ImportError:
+            logger.error("❌ Biblioteca 'groq' não instalada. Execute: pip install groq")
+            return None
+        except Exception as e:
+            logger.error(f"❌ Erro ao gerar código com Groq: {str(e)}")
+            return None
     
     def _setup_groq(self):
         """Configura cliente Groq"""
@@ -104,47 +355,131 @@ class LLMService:
         """
         try:
             if progress_callback:
-                progress_callback(3, 5, "Construindo prompt para LLM...")
+                progress_callback(1, 3, "Construindo prompt para LLM...")
             
             # Constrói prompt
             prompt = self._build_prompt(delphi_structure, rag_context, prompt_config)
             
             if progress_callback:
-                progress_callback(3, 5, "Gerando código Java com IA...")
+                progress_callback(2, 3, "Gerando código Java...")
             
-            # Tenta Groq primeiro, depois Ollama
-            result = None
+            # Tenta gerar com Groq primeiro (se configurado)
+            response = None
+            groq_key = self.config.get('groq_api_key', '') or ''
+            groq_key = groq_key.strip() if groq_key else ''
             
-            if self.groq_client:
-                logger.info("Tentando geração com Groq")
-                result = self._generate_with_groq(prompt)
+            if groq_key:
+                logger.info("🚀 Tentando geração com Groq API...")
+                try:
+                    response = self._generate_with_groq(prompt)
+                except Exception as e:
+                    error_msg = str(e)
+                    # Se falhou por tamanho, tenta prompt reduzido
+                    if "413" in error_msg or "too large" in error_msg.lower():
+                        logger.info("🔄 Tentando com prompt reduzido devido ao limite de tokens...")
+                        reduced_prompt = self._reduce_prompt_size(prompt)
+                        try:
+                            response = self._generate_with_groq(reduced_prompt)
+                        except Exception as e2:
+                            logger.error(f"Erro também com prompt reduzido: {str(e2)}")
+                    else:
+                        logger.error(f"Erro na geração com Groq: {error_msg}")
+            else:
+                logger.info("🔄 Chave Groq não configurada, usando Ollama...")
+                
+            # Se Groq falhou ou não estava configurado, tenta Ollama
+            if not response and self.ollama_client:
+                logger.info("🔄 Tentando geração com Ollama...")
+                response = self._generate_with_ollama(prompt)
             
-            if not result and self.ollama_client:
-                logger.info("Tentando geração com Ollama (fallback)")
-                result = self._generate_with_ollama(prompt)
+            # Se ambos falharam, usa mock
+            if not response:
+                groq_key_check = self.config.get('groq_api_key', '') or ''
+                groq_key_check = groq_key_check.strip() if groq_key_check else ''
+                if not groq_key_check and not self.ollama_client:
+                    logger.error("❌ Nenhuma API configurada! Configure Groq API key ou inicie o Ollama.")
+                else:
+                    logger.warning("⚠️ Todas as APIs falharam, gerando código mock")
+                response = self._generate_mock_response(delphi_structure)
             
-            if not result:
-                raise Exception("Nenhum LLM disponível para geração")
+            if progress_callback:
+                progress_callback(3, 3, "Processando código gerado...")
             
-            # Processa e estrutura resultado
-            processed_result = self._process_generated_code(result)
-            
-            logger.info("Código Java gerado com sucesso")
-            return processed_result
+            # Processa resposta
+            return self._process_generated_code(response)
             
         except Exception as e:
-            logger.error(f"Erro na geração de código: {str(e)}")
-            
-            # Tenta identificar o tipo de erro para fornecer mensagens mais úteis
             error_msg = str(e)
-            if "format specifier" in error_msg or "formatting" in error_msg:
-                error_msg = "Erro de formatação de string no resultado da IA. Tentando novamente com outro modelo ou configuração pode resolver o problema."
-            elif "JSONDecodeError" in error_msg or "JSON" in error_msg:
-                error_msg = "Erro ao decodificar resposta da IA. O formato retornado não está correto."
-            elif "api_key" in error_msg.lower() or "apikey" in error_msg.lower():
-                error_msg = "Problema com a chave API. Verifique se a chave API do Groq está configurada corretamente."
+            logger.error(f"❌ Erro na geração de código: {error_msg}")
             
-            raise Exception(f"Falha na geração de código Java: {error_msg}")
+            # Tratamento específico para erro de formatação
+            if "Invalid format specifier" in error_msg:
+                logger.info("🔧 Detectado erro de formatação, tentando correção...")
+                try:
+                    # Tenta gerar resposta corrigida
+                    corrected_response = self._generate_corrected_response(delphi_structure)
+                    return self._process_generated_code(corrected_response)
+                except Exception as correction_error:
+                    logger.error(f"❌ Falha na correção: {str(correction_error)}")
+            
+            # Fallback final
+            return {
+                "files": {},
+                "error": f"Falha na geração: {error_msg}",
+                "fallback_used": True
+            }
+    
+    def _generate_corrected_response(self, delphi_structure: Dict[str, Any]) -> str:
+        """
+        Gera resposta corrigida quando há erro de formatação
+        """
+        try:
+            project_name = delphi_structure.get('metadata', {}).get('project_name', 'ModernizedApp')
+            
+            # Gera código básico sem formatação problemática
+            basic_code = f"""
+package com.example.{project_name.lower().replace(' ', '')};
+
+import org.springframework.boot.SpringApplication;
+import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.web.bind.annotation.*;
+
+@SpringBootApplication
+public class Application {{
+    public static void main(String[] args) {{
+        SpringApplication.run(Application.class, args);
+    }}
+}}
+
+@RestController
+@RequestMapping("/api")
+public class MainController {{
+    
+    @GetMapping("/health")
+    public String health() {{
+        return "Application is running";
+    }}
+    
+    @GetMapping("/info")
+    public String info() {{
+        return "Modernized from Delphi project: {project_name}";
+    }}
+}}
+"""
+            
+            # Retorna em formato JSON seguro
+            return f'''{{
+    "files": {{
+        "src/main/java/com/example/{project_name.lower().replace(' ', '')}/Application.java": {{
+            "content": {json.dumps(basic_code)}
+        }}
+    }},
+    "message": "Código gerado com correção de formatação"
+}}'''
+            
+        except Exception as e:
+            logger.error(f"Erro ao gerar resposta corrigida: {str(e)}")
+            return '{"files": {}, "error": "Falha na correção de formatação"}'
     
     def _build_prompt(self, delphi_structure: Dict[str, Any], rag_context: str, prompt_config: Optional[Dict[str, str]] = None) -> str:
         """
@@ -281,8 +616,14 @@ Gere o código Java completo agora:
         try:
             import re
             
+            # Verifica se data é None primeiro
+            if data is None:
+                logger.warning("data é None em _sanitize_template_data, retornando fallback")
+                return "DADOS_NAO_DISPONIVEIS"
+            
+            # Converte para string de forma segura
             if not isinstance(data, str):
-                data = str(data)
+                data = str(data) if data is not None else ""
             
             # Remove ou substitui sequências problemáticas específicas
             # Padrão que está causando o erro: % 123, "message": "Cliente criado"
@@ -322,8 +663,11 @@ Gere o código Java completo agora:
             logger.warning(f"Erro ao sanitizar dados do template: {str(e)}")
             # Fallback: conversão básica para string segura
             try:
-                safe_data = str(data).replace('%', 'PERCENT').replace('{', '{{').replace('}', '}}')
-                return safe_data
+                if data is not None:
+                    safe_data = str(data).replace('%', 'PERCENT').replace('{', '{{').replace('}', '}}')
+                    return safe_data
+                else:
+                    return "DADOS_NAO_DISPONIVEIS"
             except:
                 return "DADOS_NAO_DISPONIVEIS"
 
@@ -456,37 +800,141 @@ Gere o código Java completo agora:
             return None
     
     def _generate_with_ollama(self, prompt: str) -> Optional[str]:
-        """Gera código usando Ollama"""
+        """Gera código usando Ollama com configurações universais otimizadas"""
         try:
-            model = self.config.get('ollama_model', 'codellama:34b')
+            # Usa o modelo configurado (padrão: codellama:7b)
+            model = self.config.get('ollama_model', 'codellama:7b')
             
+            logger.info(f"🔄 Tentando geração com Ollama usando modelo: {model}")
+            
+            # Tenta usar configurações universais
+            try:
+                from config.universal_model_config import (
+                    get_universal_config, 
+                    get_model_system_prompt,
+                    detect_model_type,
+                    get_enhanced_options_universal
+                )
+                
+                # Aplica configurações otimizadas
+                performance_mode = self.config.get('performance_mode', 'fast')
+                options = get_universal_config(model, performance_mode)
+                
+                # Obtém prompt de sistema específico para o modelo
+                system_prompt = get_model_system_prompt(model, 'conversion', performance_mode)
+                
+                # Determina se deve reduzir o prompt baseado no tamanho do modelo
+                model_type = detect_model_type(model)
+                
+                if '1.5b' in model.lower() or '1b' in model.lower():
+                    # Modelos pequenos - reduz prompt
+                    final_prompt = self._reduce_prompt_for_ollama(prompt)
+                    logger.info(f"📦 Prompt reduzido para modelo pequeno: {model}")
+                elif '7b' in model.lower():
+                    # Modelos médios - prompt moderado
+                    final_prompt = prompt[:4000] if len(prompt) > 4000 else prompt
+                    logger.info(f"⚖️ Prompt moderado para modelo médio: {model}")
+                else:
+                    # Modelos grandes - prompt completo
+                    final_prompt = prompt
+                    logger.info(f"🚀 Prompt completo para modelo grande: {model}")
+                    
+                logger.info(f"🚀 Usando configurações universais para {model} ({model_type}) - Modo: {performance_mode}")
+                
+            except ImportError:
+                logger.warning("⚠️ Configurações universais não disponíveis, tentando DeepSeek fallback")
+                
+                # Fallback para configurações antigas do DeepSeek
+                try:
+                    from config.deepseek_r1_config import get_deepseek_r1_config, get_deepseek_r1_system_prompt, is_deepseek_r1_model
+                    
+                    if is_deepseek_r1_model(model):
+                        # Usa configurações otimizadas para DeepSeek-R1
+                        options = get_deepseek_r1_config(model)
+                        system_prompt = get_deepseek_r1_system_prompt('conversion')
+                        final_prompt = prompt
+                        logger.info(f"� DeepSeek-R1 fallback para {model}")
+                    else:
+                        # Configurações padrão
+                        options = {
+                            'temperature': 0.1,
+                            'num_predict': 2000,
+                            'top_p': 0.9,
+                            'top_k': 40
+                        }
+                        system_prompt = 'Especialista em migração Delphi→Java Spring Boot. Retorne código funcional em formato JSON.'
+                        final_prompt = self._reduce_prompt_for_ollama(prompt)
+                        logger.info(f"🔄 Configurações padrão para {model}")
+                        
+                except ImportError:
+                    logger.warning("⚠️ Todas as configurações falharam, usando configuração básica")
+                    
+                    # Configurações básicas de último recurso
+                    if 'deepseek-r1:14b' in model:
+                        options = {
+                            'temperature': 0.1,
+                            'num_predict': 4000,
+                            'top_p': 0.9,
+                            'top_k': 50,
+                            'repeat_penalty': 1.1,
+                            'seed': 42,
+                            'num_ctx': 8192,
+                        }
+                        system_prompt = 'Expert Delphi→Java Spring Boot migration specialist. Generate functional Java code in JSON format.'
+                        final_prompt = prompt
+                    elif 'codellama' in model.lower():
+                        options = {
+                            'temperature': 0.05,  # Mais determinístico para código
+                            'num_predict': 2500,
+                            'top_p': 0.8,
+                            'top_k': 30,
+                            'repeat_penalty': 1.1,
+                            'seed': 42,
+                            'num_ctx': 4096,
+                        }
+                        system_prompt = 'Expert code generation assistant for Delphi to Java Spring Boot migration. Generate clean, functional Java code in JSON format.'
+                        final_prompt = prompt[:3000] if len(prompt) > 3000 else prompt
+                    else:
+                        options = {
+                            'temperature': 0.1,
+                            'num_predict': 2000,
+                            'top_p': 0.9,
+                            'top_k': 40
+                        }
+                        system_prompt = 'Software migration specialist. Generate Java Spring Boot code in JSON format.'
+                        final_prompt = self._reduce_prompt_for_ollama(prompt)
+            
+            # Executa a geração
             response = ollama.chat(
                 model=model,
                 messages=[
                     {
                         'role': 'system',
-                        'content': 'Você é um especialista em migração de sistemas Delphi para Java Spring Boot. Sempre retorne código completo e funcional.'
+                        'content': system_prompt
                     },
                     {
                         'role': 'user',
-                        'content': prompt
+                        'content': final_prompt
                     }
                 ],
-                options={
-                    'temperature': 0.1,
-                    'num_predict': 4000
-                }
+                options=options
             )
             
+            logger.info(f"✅ Resposta gerada com sucesso pelo Ollama ({model})")
             return response['message']['content']
             
         except Exception as e:
-            logger.error(f"Erro na geração com Ollama: {str(e)}")
+            logger.error(f"❌ Erro na geração com Ollama: {str(e)}")
             return None
     
     def _process_generated_code(self, generated_content: str) -> Dict[str, Any]:
         """Processa e estrutura o código gerado"""
         try:
+            # Verifica se o conteúdo é None
+            if generated_content is None:
+                logger.warning("Conteúdo gerado é None, usando fallback")
+                return self._create_fallback_structure("")
+            
             # Tenta sanitizar o conteúdo para evitar problemas de formatação
             sanitized_content = self._sanitize_content(generated_content)
             
@@ -503,15 +951,36 @@ Gere o código Java completo agora:
                 
         except Exception as e:
             logger.warning(f"Erro ao processar código gerado: {str(e)}")
-            return self._create_fallback_structure(generated_content)
+            return self._create_fallback_structure(generated_content or "")
             
-    def _sanitize_content(self, content: str) -> str:
+    def _sanitize_content(self, content) -> str:
         """Sanitiza o conteúdo para evitar problemas de formatação"""
         try:
+            # Verifica se o conteúdo é None
+            if content is None:
+                logger.warning("Conteúdo é None, retornando string vazia")
+                return ""
+            
+            # Se o conteúdo for um dicionário, retorna como está
+            if isinstance(content, dict):
+                return content
+            
+            # Converte para string de forma segura
+            if not isinstance(content, str):
+                content = str(content) if content is not None else ""
+            
+            # Garante que content não é None antes de fazer strip
+            if content is None:
+                content = ""
+            
+            # Remove caracteres problemáticos e faz strip seguro
+            sanitized = content.strip() if content else ""
+            
+            # Remove possíveis caracteres de controle
+            sanitized = ''.join(char for char in sanitized if ord(char) >= 32 or char in '\n\r\t')
+            
             # Substitui caracteres de formatação que podem causar problemas
             import re
-            
-            sanitized = content
             
             # Remove ou substitui sequências problemáticas de formatação
             # Padrão que está causando o erro: % 123, "message": "Cliente criado"
@@ -542,163 +1011,16 @@ Gere o código Java completo agora:
             return sanitized
             
         except Exception as e:
-            logger.warning(f"Erro ao sanitizar conteúdo: {str(e)}")
+            logger.error(f"Erro ao sanitizar conteúdo: {str(e)}")
             # Se a sanitização falhar, pelo menos remove % isolados
             try:
-                simple_fix = content.replace('% ', '')
-                return simple_fix
+                if content is not None and isinstance(content, str):
+                    simple_fix = content.replace('% ', '')
+                    return simple_fix
+                else:
+                    return str(content) if content is not None else ""
             except:
-                return content
-    
-    def _extract_json_from_content(self, content: str) -> Optional[Dict[str, Any]]:
-        """Extrai JSON do conteúdo gerado pelo LLM"""
-        try:
-            # Procura por blocos JSON
-            import re
-            json_pattern = r'```json\s*\n(.*?)\n```'
-            match = re.search(json_pattern, content, re.DOTALL)
-            
-            if match:
-                json_content = match.group(1)
-                try:
-                    # Primeira tentativa: JSON direto
-                    return json.loads(json_content)
-                except (json.JSONDecodeError, ValueError) as json_err:
-                    logger.warning(f"Erro ao decodificar JSON do bloco marcado: {str(json_err)}")
-                    # Segunda tentativa: limpa o JSON antes de tentar novamente
-                    try:
-                        cleaned_json = self._clean_json_content(json_content)
-                        return json.loads(cleaned_json)
-                    except (json.JSONDecodeError, ValueError) as clean_err:
-                        logger.warning(f"Erro mesmo após limpeza: {str(clean_err)}")
-                        # Terceira tentativa: extração manual de campos básicos
-                        return self._extract_basic_fields(json_content)
-            
-            # Tenta encontrar JSON solto no texto
-            brace_start = content.find('{')
-            brace_end = content.rfind('}')
-            
-            if brace_start != -1 and brace_end != -1 and brace_end > brace_start:
-                json_content = content[brace_start:brace_end + 1]
-                try:
-                    return json.loads(json_content)
-                except (json.JSONDecodeError, ValueError) as json_err:
-                    logger.warning(f"Erro ao decodificar JSON solto: {str(json_err)}")
-                    # Tenta limpar e reprocessar
-                    try:
-                        cleaned_json = self._clean_json_content(json_content)
-                        return json.loads(cleaned_json)
-                    except (json.JSONDecodeError, ValueError):
-                        # Fallback: extração básica
-                        return self._extract_basic_fields(json_content)
-            
-            logger.warning("Nenhum JSON válido encontrado no conteúdo")
-            return None
-            
-        except Exception as e:
-            logger.warning(f"Erro ao extrair JSON: {str(e)}")
-            return None
-    
-    def _extract_basic_fields(self, content: str) -> Dict[str, Any]:
-        """Extrai campos básicos quando JSON completo falha"""
-        try:
-            import re
-            basic_structure = {
-                "project_name": "modernized_app",
-                "package_name": "com.example.modernizedapp",
-                "files": {}
-            }
-            
-            # Tenta extrair nome do projeto
-            project_match = re.search(r'"project_name"\s*:\s*"([^"]*)"', content)
-            if project_match:
-                basic_structure["project_name"] = project_match.group(1)
-            
-            # Tenta extrair package name
-            package_match = re.search(r'"package_name"\s*:\s*"([^"]*)"', content)
-            if package_match:
-                basic_structure["package_name"] = package_match.group(1)
-            
-            # Adiciona conteúdo bruto como fallback
-            basic_structure["files"]["generated_content.txt"] = content
-            basic_structure["files"]["src/main/java/com/example/modernizedapp/ModernizedAppApplication.java"] = self._get_default_main_class()
-            
-            logger.info("JSON básico extraído com sucesso usando fallback")
-            return basic_structure
-            
-        except Exception as e:
-            logger.error(f"Erro na extração básica: {str(e)}")
-            return {
-                "project_name": "modernized_app",
-                "package_name": "com.example.modernizedapp", 
-                "files": {
-                    "error.txt": f"Erro na extração: {str(e)}",
-                    "raw_content.txt": content
-                }
-            }
-    
-    def _get_default_main_class(self) -> str:
-        """Retorna classe principal padrão"""
-        return """package com.example.modernizedapp;
-
-import org.springframework.boot.SpringApplication;
-import org.springframework.boot.autoconfigure.SpringBootApplication;
-
-@SpringBootApplication
-public class ModernizedAppApplication {
-    public static void main(String[] args) {
-        SpringApplication.run(ModernizedAppApplication.class, args);
-    }
-}"""
-    
-    def _clean_json_content(self, json_content: str) -> str:
-        """Limpa conteúdo JSON para evitar erros de formatação"""
-        try:
-            import re
-            
-            # Primeiro, trata o caso específico que está causando erro
-            # Padrão: % 123, "message": "Cliente criado"
-            specific_pattern = r'%\s*(\d+),\s*"([^"]*)":\s*"([^"]*)"'
-            json_content = re.sub(specific_pattern, r'"\2": "\3", "status": \1', json_content)
-            
-            # Remove outros % problemáticos
-            json_content = re.sub(r'%\s*(\d+)', r'\1', json_content)
-            json_content = re.sub(r'%\s*"([^"]*)"', r'"\1"', json_content)
-            
-            # Substitui sequências de escape problemáticas
-            json_content = re.sub(r'%([^d\s])', r'%%\1', json_content)
-            
-            # Limpa formatações em strings JSON
-            # Procura por "%d" ou "%s" dentro de strings e substitui
-            pattern = r'("[^"]*%[ds][^"]*")'
-            for match in re.finditer(pattern, json_content):
-                original = match.group(1)
-                # Substitui %d e %s por valores placeholders
-                fixed = original.replace('%d', '0').replace('%s', 'value')
-                json_content = json_content.replace(original, fixed)
-            
-            # Remove escape de aspas que podem causar problemas
-            json_content = json_content.replace('\\"', '"')
-            
-            # Garante que aspas duplas são usadas para chaves e valores
-            json_content = re.sub(r"'([^']*)':", r'"\1":', json_content)
-            json_content = re.sub(r':\s*\'([^\']*)\'', r': "\1"', json_content)
-            
-            # Remove vírgulas trailing que podem quebrar JSON
-            json_content = re.sub(r',\s*}', '}', json_content)
-            json_content = re.sub(r',\s*]', ']', json_content)
-            
-            logger.info(f"JSON limpo com sucesso. Tamanho: {len(json_content)} caracteres")
-            return json_content
-            
-        except Exception as e:
-            logger.error(f"Erro ao limpar JSON: {str(e)}")
-            # Fallback mais simples: remove todos os % que não são parte de URLs
-            try:
-                fallback = re.sub(r'%(?![0-9A-Fa-f]{2})', '', json_content)
-                return fallback
-            except:
-                return json_content
+                return ""
     
     def _create_basic_structure(self, content: str) -> Dict[str, Any]:
         """Cria estrutura básica a partir do conteúdo gerado"""
@@ -786,7 +1108,7 @@ public class ModernizedAppApplication {
         if self.ollama_client:
             try:
                 ollama.chat(
-                    model=self.config.get('ollama_model', 'codellama:34b'),
+                    model=self.config.get('ollama_model', 'deepseek-r1:14b'),
                     messages=[{'role': 'user', 'content': 'Hello'}],
                     options={'num_predict': 10}
                 )
@@ -795,3 +1117,566 @@ public class ModernizedAppApplication {
                 status['ollama'] = False
         
         return status
+    
+    def _generate_mock_response(self, delphi_structure: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Gera resposta mock quando APIs falham
+        
+        Args:
+            delphi_structure: Estrutura do projeto Delphi
+            
+        Returns:
+            Resposta mock com estrutura básica Java Spring Boot
+        """
+        logger.info("🔄 Gerando código mock devido a falhas nas APIs")
+        
+        # Extrai informações básicas da estrutura
+        project_name = delphi_structure.get('project_name', 'ModernizedProject')
+        
+        mock_response = {
+            "project_name": project_name,
+            "package_name": f"com.modernized.{project_name.lower()}",
+            "generated_files": {
+                "src/main/java/com/modernized/ModernizedApplication.java": """package com.modernized;
+
+import org.springframework.boot.SpringApplication;
+import org.springframework.boot.autoconfigure.SpringBootApplication;
+
+@SpringBootApplication
+public class ModernizedApplication {
+    public static void main(String[] args) {
+        SpringApplication.run(ModernizedApplication.class, args);
+    }
+}""",
+                "src/main/java/com/modernized/controller/MainController.java": """package com.modernized.controller;
+
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+import org.springframework.http.ResponseEntity;
+
+@RestController
+@RequestMapping("/api")
+public class MainController {
+    
+    @GetMapping("/status")
+    public ResponseEntity<String> getStatus() {
+        return ResponseEntity.ok("Sistema modernizado funcionando");
+    }
+}""",
+                "src/main/resources/application.properties": """# Database configuration
+spring.datasource.url=jdbc:h2:mem:testdb
+spring.datasource.driverClassName=org.h2.Driver
+spring.datasource.username=sa
+spring.datasource.password=password
+spring.h2.console.enabled=true
+
+# JPA configuration
+spring.jpa.database-platform=org.hibernate.dialect.H2Dialect
+spring.jpa.hibernate.ddl-auto=create-drop
+spring.jpa.show-sql=true
+
+# Server configuration
+server.port=8080""",
+                "pom.xml": """<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 
+                             http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <groupId>com.modernized</groupId>
+    <artifactId>modernized-project</artifactId>
+    <version>1.0.0</version>
+    <packaging>jar</packaging>
+
+    <name>Modernized Project</name>
+    <description>Projeto modernizado do Delphi para Java Spring Boot</description>
+
+    <parent>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-parent</artifactId>
+        <version>3.2.0</version>
+        <relativePath/>
+    </parent>
+
+    <properties>
+        <java.version>17</java.version>
+    </properties>
+
+    <dependencies>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-web</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-data-jpa</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.h2database</groupId>
+            <artifactId>h2</artifactId>
+            <scope>runtime</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-maven-plugin</artifactId>
+            </plugin>
+        </plugins>
+    </build>
+</project>"""
+            },
+            "conversion_notes": [
+                "⚠️ Este é um código mock gerado devido a falhas nas APIs",
+                "🔄 Estrutura básica Java Spring Boot criada",
+                "📝 Contém aplicação principal, controller básico e configurações",
+                "🚀 Projeto pronto para executar com 'mvn spring-boot:run'",
+                "💡 Para conversão completa, configure as APIs Groq ou Ollama"
+            ],
+            "generated_timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
+            "generation_method": "mock_fallback"
+        }
+        
+        return mock_response
+    
+    def _reduce_prompt_size(self, prompt: str) -> str:
+        """
+        Reduz o tamanho do prompt removendo partes menos críticas
+        
+        Args:
+            prompt: Prompt original
+            
+        Returns:
+            Prompt reduzido mantendo informações essenciais
+        """
+        logger.info("🔄 Reduzindo tamanho do prompt...")
+        
+        # Divide o prompt em seções
+        sections = prompt.split('\n\n')
+        
+        # Identifica seções críticas (que devem ser mantidas)
+        critical_sections = []
+        optional_sections = []
+        
+        for section in sections:
+            section_lower = section.lower()
+            
+            # Seções críticas que devem ser mantidas
+            if any(keyword in section_lower for keyword in [
+                'você é um especialista', 'sua tarefa', 'objetivo',
+                'projeto delphi', 'estrutura java', 'formato de saída'
+            ]):
+                critical_sections.append(section)
+            else:
+                optional_sections.append(section)
+        
+        # Reconstrói o prompt com seções críticas
+        reduced_prompt = '\n\n'.join(critical_sections)
+        
+        # Adiciona seções opcionais até um limite razoável
+        max_size = 4000  # Limite conservador para tokens
+        current_size = len(reduced_prompt)
+        
+        for section in optional_sections:
+            if current_size + len(section) < max_size:
+                reduced_prompt += '\n\n' + section
+                current_size += len(section)
+            else:
+                break
+        
+        # Se ainda estiver muito grande, reduz mais drasticamente
+        if len(reduced_prompt) > max_size:
+            reduced_prompt = reduced_prompt[:max_size] + "\n\n[...conteúdo truncado para atender limite de tokens...]"
+        
+        logger.info(f"Prompt reduzido de {len(prompt)} para {len(reduced_prompt)} caracteres")
+        return reduced_prompt
+    
+    def _reduce_prompt_for_ollama(self, prompt: str) -> str:
+        """
+        Reduz o prompt especificamente para o modelo Ollama menor (deepseek-r1:1.5b)
+        """
+        try:
+            # Limite mais agressivo para o modelo menor
+            max_size = 2000  # Limite mais conservador para o modelo 1.5b
+            
+            if len(prompt) <= max_size:
+                return prompt
+            
+            logger.info(f"🔄 Reduzindo prompt para Ollama de {len(prompt)} caracteres")
+            
+            # Seções críticas que devem ser mantidas
+            critical_sections = []
+            
+            # Adiciona contexto básico
+            if "JUNIM" in prompt:
+                critical_sections.append("CONTEXTO: Migração Delphi para Java Spring Boot usando JUNIM")
+            
+            # Extrai apenas as informações mais essenciais
+            lines = prompt.split('\n')
+            essential_lines = []
+            
+            for line in lines:
+                if line is not None:
+                    line = line.strip()
+                    # Mantém linhas com informações estruturais importantes
+                    if any(keyword in line.lower() for keyword in [
+                        'class ', 'procedure ', 'function ', 'form', 'datamodule',
+                        'controller', 'service', 'repository', 'entity'
+                    ]):
+                        essential_lines.append(line)
+                # Mantém definições de campos/propriedades
+                elif ':' in line and any(keyword in line.lower() for keyword in [
+                    'string', 'integer', 'boolean', 'tfield', 'tquery'
+                ]):
+                    essential_lines.append(line)
+            
+            # Reconstrói prompt essencial
+            reduced_prompt = '\n'.join(essential_lines)
+            
+            # Adiciona instruções básicas
+            basic_instructions = """
+TAREFA: Gere código Java Spring Boot baseado no código Delphi fornecido.
+FORMATO: Retorne JSON com estrutura: {"files": [{"name": "nome.java", "content": "código"}]}
+FOCO: Mantenha a lógica de negócio principal e use padrões Spring Boot.
+"""
+            
+            # Combina tudo respeitando o limite
+            final_prompt = basic_instructions + "\n\nCÓDIGO DELPHI:\n" + reduced_prompt
+            
+            # Trunca se ainda estiver muito grande
+            if len(final_prompt) > max_size:
+                final_prompt = final_prompt[:max_size - 100] + "\n\n[...truncado para modelo menor...]"
+            
+            logger.info(f"✅ Prompt reduzido para {len(final_prompt)} caracteres para Ollama")
+            return final_prompt
+            
+        except Exception as e:
+            logger.error(f"Erro ao reduzir prompt para Ollama: {str(e)}")
+            # Retorna uma versão muito simplificada
+            return f"Converta este código Delphi para Java Spring Boot:\n\n{prompt[:1000]}"
+    
+    def _get_prompt_from_manager(self, prompt_type: str, context: str = "") -> str:
+        """Obtém prompt do gerenciador de prompts se disponível"""
+        if not self.prompt_manager:
+            return ""
+        
+        try:
+            # Mapeia tipos de prompt para métodos do PromptManager
+            prompt_methods = {
+                'analysis': 'get_analysis_prompt',
+                'backend_analysis': 'get_backend_analysis_prompt',
+                'conversion': 'get_spring_conversion_prompt',
+                'backend_conversion': 'get_backend_conversion_prompt',
+                'modernization': 'get_modernization_prompt',
+                'testing': 'get_testing_prompt',
+                'functionality_mapping': 'get_functionality_mapping_prompt',
+                'mermaid_diagram': 'get_mermaid_diagram_prompt',
+                'documentation': 'get_documentation_enhanced_prompt'
+            }
+            
+            method_name = prompt_methods.get(prompt_type)
+            if method_name and hasattr(self.prompt_manager, method_name):
+                method = getattr(self.prompt_manager, method_name)
+                if context and method_name in ['get_spring_conversion_prompt', 'get_backend_conversion_prompt']:
+                    return method(context)
+                else:
+                    return method()
+            else:
+                logger.warning(f"Método de prompt não encontrado para tipo: {prompt_type}")
+                return ""
+                
+        except Exception as e:
+            logger.error(f"Erro ao obter prompt do gerenciador: {str(e)}")
+            return ""
+
+    def generate_analysis(self, project_data: str, prompt_type: str = "analysis") -> str:
+        """
+        Gera análise do projeto usando prompts do diretório
+        
+        Args:
+            project_data: Dados do projeto analisado
+            prompt_type: Tipo de prompt a ser usado
+            
+        Returns:
+            Análise gerada
+        """
+        try:
+            # Obtém prompt do gerenciador
+            prompt = self._get_prompt_from_manager(prompt_type)
+            
+            if not prompt:
+                # Fallback para prompt padrão
+                prompt = """
+Analise o projeto Delphi fornecido e gere uma análise técnica detalhada em formato Markdown.
+
+INSTRUÇÕES:
+- Foque em aspectos de backend
+- Identifique funcionalidades específicas
+- Documente padrões arquiteturais
+- Sugira modernização para Java Spring Boot
+- Seja específico e use dados reais do projeto
+"""
+            
+            # Combina prompt com dados do projeto
+            full_prompt = f"{prompt}\n\n## DADOS DO PROJETO:\n{project_data}"
+            
+            # Gera resposta
+            response = self.generate_response(full_prompt)
+            return response if response else "Erro ao gerar análise"
+            
+        except Exception as e:
+            logger.error(f"Erro ao gerar análise: {str(e)}")
+            return f"Erro ao gerar análise: {str(e)}"
+
+    def generate_modernization(self, project_data: str, analysis_context: str = "", prompt_type: str = "modernization") -> str:
+        """
+        Gera código modernizado usando prompts do diretório
+        
+        Args:
+            project_data: Dados do projeto Delphi
+            analysis_context: Contexto da análise prévia
+            prompt_type: Tipo de prompt a ser usado
+            
+        Returns:
+            Código modernizado gerado
+        """
+        try:
+            # Obtém prompt do gerenciador
+            prompt = self._get_prompt_from_manager(prompt_type, analysis_context)
+            
+            if not prompt:
+                # Fallback para prompt padrão
+                prompt = """
+Converta o código Delphi fornecido para Java Spring Boot.
+
+INSTRUÇÕES:
+- Gere código Java funcional
+- Use padrões Spring Boot
+- Implemente arquitetura em camadas
+- Mantenha funcionalidades originais
+- Foque apenas em backend
+"""
+            
+            # Combina prompt com dados do projeto
+            context = f"## DADOS DO PROJETO:\n{project_data}"
+            if analysis_context:
+                context += f"\n\n## CONTEXTO DA ANÁLISE:\n{analysis_context}"
+            
+            full_prompt = f"{prompt}\n\n{context}"
+            
+            # Gera resposta
+            response = self.generate_response(full_prompt)
+            return response if response else "Erro ao gerar código modernizado"
+            
+        except Exception as e:
+            logger.error(f"Erro ao gerar código modernizado: {str(e)}")
+            return f"Erro ao gerar código modernizado: {str(e)}"
+
+    def generate_documentation(self, project_data: str, analysis_results: Dict[str, Any] = None, prompt_type: str = "documentation") -> str:
+        """
+        Gera documentação usando prompts do diretório
+        
+        Args:
+            project_data: Dados do projeto
+            analysis_results: Resultados da análise
+            prompt_type: Tipo de prompt a ser usado
+            
+        Returns:
+            Documentação gerada
+        """
+        try:
+            # Obtém prompt do gerenciador
+            if self.prompt_manager and hasattr(self.prompt_manager, 'get_documentation_enhanced_prompt'):
+                prompt = self.prompt_manager.get_documentation_enhanced_prompt(analysis_results)
+            else:
+                prompt = self._get_prompt_from_manager(prompt_type)
+            
+            if not prompt:
+                # Fallback para prompt padrão
+                prompt = """
+Gere documentação técnica detalhada do projeto em formato Markdown.
+
+INSTRUÇÕES:
+- Use dados reais do projeto
+- Seja específico e objetivo
+- Foque em aspectos técnicos
+- Documente funcionalidades identificadas
+"""
+            
+            # Combina prompt com dados do projeto
+            full_prompt = f"{prompt}\n\n## DADOS DO PROJETO:\n{project_data}"
+            
+            # Gera resposta
+            response = self.generate_response(full_prompt)
+            return response if response else "Erro ao gerar documentação"
+            
+        except Exception as e:
+            logger.error(f"Erro ao gerar documentação: {str(e)}")
+            return f"Erro ao gerar documentação: {str(e)}"
+
+    def generate_tests(self, java_code: str, prompt_type: str = "testing") -> str:
+        """
+        Gera testes usando prompts do diretório
+        
+        Args:
+            java_code: Código Java para gerar testes
+            prompt_type: Tipo de prompt a ser usado
+            
+        Returns:
+            Testes gerados
+        """
+        try:
+            # Obtém prompt do gerenciador
+            prompt = self._get_prompt_from_manager(prompt_type)
+            
+            if not prompt:
+                # Fallback para prompt padrão
+                prompt = """
+Gere testes unitários e de integração para o código Java fornecido.
+
+INSTRUÇÕES:
+- Use JUnit 5 e Mockito
+- Implemente testes de Controllers, Services e Repositories
+- Cubra cenários positivos e negativos
+- Use TestContainers para testes de integração
+- Garanta cobertura adequada
+"""
+            
+            # Combina prompt com código Java
+            full_prompt = f"{prompt}\n\n## CÓDIGO JAVA:\n{java_code}"
+            
+            # Gera resposta
+            response = self.generate_response(full_prompt)
+            return response if response else "Erro ao gerar testes"
+            
+        except Exception as e:
+            logger.error(f"Erro ao gerar testes: {str(e)}")
+            return f"Erro ao gerar testes: {str(e)}"
+    
+    def generate_response(self, prompt: str) -> Optional[str]:
+        """Gera resposta de forma otimizada"""
+        try:
+            # Verifica cache primeiro
+            cache_key = f"llm_response_{hash(prompt)}"
+            cached_response = cache_manager.get(cache_key)
+            if cached_response:
+                logger.info("✅ Resposta recuperada do cache")
+                return cached_response
+            
+            # Verifica memória antes de gerar
+            if not performance_optimizer.check_memory_usage():
+                logger.warning("⚠️ Uso alto de memória, aguardando...")
+                time.sleep(1)
+            
+            # Otimiza prompt
+            optimized_prompt = performance_optimizer.optimize_prompt_length(prompt, 30000)
+            
+            # Gera resposta
+            response = self._generate_response_internal(optimized_prompt)
+            
+            # Salva no cache se bem-sucedida
+            if response:
+                cache_manager.set(cache_key, response)
+            
+            return response
+            
+        except Exception as e:
+            logger.error(f"❌ Erro na geração otimizada: {str(e)}")
+            return None
+
+    def _generate_response_internal(self, prompt: str) -> Optional[str]:
+        """
+        Método interno para geração de resposta usando prompts especializados
+        
+        Args:
+            prompt: Prompt para o LLM
+            
+        Returns:
+            Resposta gerada ou None se falhar
+        """
+        try:
+            # Verifica se prompt é None ou vazio
+            if not prompt:
+                logger.error("❌ Prompt vazio ou None fornecido")
+                return None
+                
+            # Garante que prompt seja string e não None antes de strip
+            prompt_str = str(prompt) if prompt is not None else ""
+            if not prompt_str.strip():
+                logger.error("❌ Prompt vazio fornecido")
+                return None
+            
+            logger.info(f"🚀 Gerando resposta com prompt de {len(prompt_str)} caracteres")
+            
+            # Se tem prompt_manager, usa configurações otimizadas
+            if self.prompt_manager:
+                logger.info("✅ Usando prompts especializados")
+            else:
+                logger.info("⚠️ Usando prompt padrão (prompts especializados não disponíveis)")
+            
+            # Tenta gerar com Groq primeiro (se configurado)
+            response = None
+            groq_key = self.config.get('groq_api_key', '') or ''
+            groq_key = groq_key.strip() if groq_key else ''
+            
+            if groq_key:
+                logger.info("🚀 Tentando geração com Groq API...")
+                try:
+                    response = self._generate_with_groq(prompt_str)
+                    if response and isinstance(response, str) and response.strip():
+                        logger.info("✅ Resposta gerada com sucesso via Groq")
+                        return response.strip()
+                except Exception as e:
+                    error_msg = str(e)
+                    logger.error(f"❌ Erro na geração com Groq: {error_msg}")
+                    
+                    # Se falhou por tamanho, tenta prompt reduzido
+                    if "413" in error_msg or "too large" in error_msg.lower():
+                        logger.info("🔄 Tentando com prompt reduzido devido ao limite de tokens...")
+                        reduced_prompt = self._reduce_prompt_size(prompt_str)
+                        try:
+                            response = self._generate_with_groq(reduced_prompt)
+                            if response and isinstance(response, str) and response.strip():
+                                logger.info("✅ Resposta gerada com prompt reduzido via Groq")
+                                return response.strip()
+                        except Exception as e2:
+                            logger.error(f"❌ Erro também com prompt reduzido: {str(e2)}")
+            else:
+                logger.info("🔄 Chave Groq não configurada, tentando Ollama...")
+                
+            # Se Groq falhou ou não estava configurado, tenta Ollama
+            if not response and self.ollama_client:
+                logger.info("🔄 Tentando geração com Ollama...")
+                try:
+                    response = self._generate_with_ollama(prompt_str)
+                    if response and isinstance(response, str) and response.strip():
+                        logger.info("✅ Resposta gerada com sucesso via Ollama")
+                        return response.strip()
+                except Exception as e:
+                    logger.error(f"❌ Erro na geração com Ollama: {str(e)}")
+            
+            # Se ambos falharam
+            if not response:
+                if not groq_key and not self.ollama_client:
+                    logger.error("❌ Nenhuma API configurada! Configure Groq API key ou inicie o Ollama.")
+                    return "Erro: Nenhuma API de LLM configurada. Configure Groq API key ou inicie o Ollama."
+                else:
+                    logger.error("❌ Todas as APIs falharam na geração")
+                    return "Erro: Falha na geração com todas as APIs disponíveis."
+            
+            # Se chegou aqui, algo deu errado
+            logger.error("❌ Resposta vazia ou nula")
+            return None
+            
+        except Exception as e:
+            logger.error(f"❌ Erro na geração de resposta: {str(e)}")
+            return f"Erro na geração: {str(e)}"

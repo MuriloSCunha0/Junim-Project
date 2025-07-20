@@ -9,7 +9,6 @@ import logging
 
 from utils.file_handler import FileHandler
 from core.delphi_parser import DelphiParser
-from core.rag_builder import RAGBuilder
 from core.llm_service import LLMService
 from core.java_builder import JavaBuilder
 
@@ -30,7 +29,6 @@ class ModernizationPipeline:
         self.config = config
         self.file_handler = FileHandler()
         self.delphi_parser = DelphiParser()
-        self.rag_builder = RAGBuilder()
         self.llm_service = LLMService(config)
         self.java_builder = JavaBuilder()
         
@@ -50,16 +48,31 @@ class ModernizationPipeline:
         self.prompt_manager = prompt_manager
         logger.info("✅ Prompt manager configurado para usar prompts especializados")
         
+        # Recria o LLMService com o prompt_manager
+        self.llm_service = LLMService(self.config, prompt_manager)
+        logger.info("✅ LLMService recriado com prompt_manager")
+        
         # Verifica se o prompt manager tem os métodos necessários
-        if hasattr(prompt_manager, 'get_specialized_prompt'):
-            logger.info("Prompt manager possui método get_specialized_prompt")
+        essential_methods = [
+            'get_spring_conversion_prompt',
+            'get_backend_conversion_prompt',
+            'get_analysis_prompt',
+            'get_testing_prompt',
+            'get_documentation_enhanced_prompt'
+        ]
+        
+        available_methods = []
+        for method_name in essential_methods:
+            if hasattr(prompt_manager, method_name):
+                available_methods.append(method_name)
+                logger.info(f"✅ Prompt manager possui método {method_name}")
+            else:
+                logger.warning(f"⚠️ Prompt manager não possui método {method_name}")
+        
+        if available_methods:
+            logger.info(f"Métodos disponíveis: {len(available_methods)}/{len(essential_methods)}")
         else:
-            logger.warning("⚠️ Prompt manager não possui método get_specialized_prompt")
-            
-        if hasattr(prompt_manager, 'get_analysis_prompt'):
-            logger.info("Prompt manager possui método get_analysis_prompt")
-        else:
-            logger.warning("⚠️ Prompt manager não possui método get_analysis_prompt")
+            logger.warning("⚠️ Nenhum método essencial encontrado no prompt manager")
     
     def set_analysis_data(self, analysis_results, generated_docs):
         """Define dados da análise prévia para uso na modernização"""
@@ -77,6 +90,47 @@ class ModernizationPipeline:
         self.generated_docs = generated_docs
         logger.info("Dados de análise prévia carregados para modernização")
     
+    def generate_documentation(self, analysis_results, prompt_type):
+        """Gera documentação técnica baseada na análise"""
+        try:
+            logger.info(f"Gerando documentação do tipo: {prompt_type}")
+            
+            if not self.prompt_manager:
+                raise ValueError("Prompt manager não foi configurado")
+            
+            # Mapeia tipos de prompt para métodos disponíveis
+            prompt_methods = {
+                'analysis': 'get_analysis_prompt',
+                'functionality_mapping': 'get_functionality_mapping_prompt',
+                'backend_analysis': 'get_backend_analysis_prompt',
+                'backend_conversion': 'get_backend_conversion_prompt',
+                'testing': 'get_testing_prompt',
+                'mermaid_diagram': 'get_mermaid_diagram_prompt',
+                'spring_conversion': 'get_spring_conversion_prompt',
+                'documentation_enhanced': 'get_documentation_enhanced_prompt'
+            }
+            
+            method_name = prompt_methods.get(prompt_type)
+            if not method_name or not hasattr(self.prompt_manager, method_name):
+                logger.warning(f"Método de prompt não encontrado para tipo: {prompt_type}")
+                prompt = f"Gere documentação técnica para o tipo: {prompt_type}"
+            else:
+                method = getattr(self.prompt_manager, method_name)
+                prompt = method()
+            
+            # Prepara contexto com resultados da análise
+            context = f"Análise do projeto:\n{analysis_results}\n\n{prompt}"
+            
+            # Gera documentação usando o LLM
+            documentation = self.llm_service.generate_response(context)
+            
+            logger.info(f"Documentação gerada com sucesso para tipo: {prompt_type}")
+            return documentation
+            
+        except Exception as e:
+            logger.error(f"Erro ao gerar documentação: {str(e)}")
+            return f"Erro ao gerar documentação: {str(e)}"
+
     def run(self, 
             delphi_project_path: Optional[str] = None, 
             progress_callback: Optional[Callable] = None) -> str:
@@ -179,15 +233,15 @@ class ModernizationPipeline:
     def _step2_build_rag_context(self):
         """Passo 2: Geração Aumentada por Recuperação (RAG)"""
         try:
-            logger.info("PASSO 2: Construção do Contexto RAG")
+            logger.info("PASSO 2: Preparação do Contexto")
             
             if not self.delphi_structure:
                 raise Exception("Estrutura Delphi não disponível")
             
-            # Constrói contexto RAG
-            self.rag_context = self.rag_builder.build_context(self.delphi_structure)
+            # Prepara contexto simples a partir da estrutura
+            self.rag_context = self._build_simple_context(self.delphi_structure)
             
-            logger.info(f"Contexto RAG construído: {len(self.rag_context)} caracteres")
+            logger.info(f"Contexto preparado: {len(self.rag_context)} caracteres")
             
         except Exception as e:
             logger.error(f"Erro no Passo 2: {str(e)}")
@@ -210,29 +264,25 @@ class ModernizationPipeline:
                 modernization_type = self.config.get('type', 'Conversão Completa')
                 logger.info(f"Tipo de modernização configurado: {modernization_type}")
                 
-                if modernization_type == 'Apenas Entidades':
-                    prompt_config['primary_prompt'] = self.prompt_manager.get_specialized_prompt('entity_mapping')
-                    logger.info("Usando prompt especializado para mapeamento de entidades")
-                elif modernization_type == 'Apenas APIs':
-                    prompt_config['primary_prompt'] = self.prompt_manager.get_specialized_prompt('api_design')
-                    logger.info("Usando prompt especializado para design de APIs")
-                elif modernization_type == 'Apenas Serviços':
-                    prompt_config['primary_prompt'] = self.prompt_manager.get_specialized_prompt('service_layer')
-                    logger.info("Usando prompt especializado para camada de serviços")
+                # Usa prompt de conversão Spring Boot
+                if hasattr(self.prompt_manager, 'get_spring_conversion_prompt'):
+                    prompt_config['primary_prompt'] = self.prompt_manager.get_spring_conversion_prompt()
+                    logger.info("Usando prompt especializado get_spring_conversion_prompt")
+                elif hasattr(self.prompt_manager, 'get_backend_conversion_prompt'):
+                    prompt_config['primary_prompt'] = self.prompt_manager.get_backend_conversion_prompt()
+                    logger.info("Usando prompt especializado get_backend_conversion_prompt")
                 else:
-                    # Conversão completa - usa prompt base com conversão
-                    prompt_config['primary_prompt'] = self.prompt_manager.get_specialized_prompt('conversion')
-                    logger.info("Usando prompt especializado para conversão completa")
+                    logger.warning("Nenhum prompt de conversão específico encontrado")
                 
                 # Adiciona prompts auxiliares
-                if self.config.get('include_tests', False):
-                    prompt_config['testing_prompt'] = self.prompt_manager.get_specialized_prompt('testing')
+                if self.config.get('include_tests', False) and hasattr(self.prompt_manager, 'get_testing_prompt'):
+                    prompt_config['testing_prompt'] = self.prompt_manager.get_testing_prompt()
                     logger.info("Prompt de testes adicionado à configuração")
                 
                 # Se há documentação gerada, usa prompt enriquecido
-                if (hasattr(self, 'analysis_results') and hasattr(self, 'generated_docs')):
-                    prompt_config['enhanced_prompt'] = self.prompt_manager.get_specialized_prompt(
-                        'documentation_enhanced',
+                if (hasattr(self, 'analysis_results') and hasattr(self, 'generated_docs') and 
+                    hasattr(self.prompt_manager, 'get_documentation_enhanced_prompt')):
+                    prompt_config['enhanced_prompt'] = self.prompt_manager.get_documentation_enhanced_prompt(
                         analysis_results=self.analysis_results,
                         generated_docs=self.generated_docs
                     )
@@ -351,11 +401,11 @@ class ModernizationPipeline:
                     'datamodules_count': len(self.delphi_structure.get('data_modules', {}))
                 }
             
-            # Resumo do RAG
+            # Resumo do contexto
             if self.rag_context:
-                report['rag_summary'] = {
+                report['context_summary'] = {
                     'context_length': len(self.rag_context),
-                    'knowledge_base': self.rag_builder.get_knowledge_base_summary()
+                    'context_type': 'simple_structure'
                 }
             
             # Resumo da geração
@@ -417,12 +467,6 @@ class ModernizationPipeline:
                 'analysis_timestamp': self.analysis_results.get('metadata', {}).get('analysis_timestamp')
             }
             
-            logger.info(f"Análise prévia convertida com sucesso: {len(self.delphi_structure)} chaves")
-            
-        except Exception as e:
-            logger.error(f"Erro ao usar análise prévia: {str(e)}")
-            raise Exception(f"Falha ao usar análise prévia: {str(e)}")
-            
             # Log do resumo
             summary = self.delphi_structure.get('summary', {})
             logger.info(f"Análise prévia carregada - Units: {summary.get('total_units', 0)}, "
@@ -431,4 +475,35 @@ class ModernizationPipeline:
             
         except Exception as e:
             logger.error(f"Erro ao usar análise prévia: {str(e)}")
-            raise Exception(f"Falha ao carregar análise prévia: {str(e)}")
+            raise Exception(f"Falha ao usar análise prévia: {str(e)}")
+    
+    def _build_simple_context(self, delphi_structure: Dict[str, Any]) -> str:
+        """
+        Constrói contexto simples a partir da estrutura Delphi
+        Substitui a funcionalidade do RAGBuilder removido
+        """
+        context_parts = []
+        
+        # Resumo geral
+        summary = delphi_structure.get('summary', {})
+        context_parts.append(f"PROJETO DELPHI - {summary.get('total_units', 0)} units, {summary.get('total_forms', 0)} forms")
+        
+        # Units principais
+        units = delphi_structure.get('units', {})
+        if units:
+            unit_names = list(units.keys())[:10]  # Primeiras 10 units
+            context_parts.append(f"UNITS: {', '.join(unit_names)}")
+        
+        # Forms principais  
+        forms = delphi_structure.get('forms', {})
+        if forms:
+            form_names = list(forms.keys())[:5]  # Primeiras 5 forms
+            context_parts.append(f"FORMS: {', '.join(form_names)}")
+        
+        # Data modules
+        data_modules = delphi_structure.get('data_modules', {})
+        if data_modules:
+            dm_names = list(data_modules.keys())[:5]
+            context_parts.append(f"DATA_MODULES: {', '.join(dm_names)}")
+        
+        return "\n".join(context_parts)

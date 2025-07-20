@@ -1,735 +1,290 @@
 """
-Sistema de prompts especializados para modernização Delphi → Java Spring
+Sistema de prompts especializados LIMPO para modernização Delphi → Java Spring
+VERSÃO SIMPLIFICADA - Apenas funções essenciais
 """
 
 import os
-from typing import Dict, Any, List
+import logging
+from typing import Dict, Any
 from pathlib import Path
 
+logger = logging.getLogger(__name__)
+
 class PromptManager:
-    """Gerenciador de prompts especializados do JUNIM"""
+    """Gerenciador SIMPLIFICADO de prompts especializados do JUNIM"""
     
-    def __init__(self):
+    def __init__(self, performance_mode: str = 'fast', model_name: str = 'codellama:7b'):
+        """Inicializa o gerenciador simplificado"""
         self.prompts_dir = Path(__file__).parent
         self.base_prompt = self._load_base_prompt()
+        self._prompt_cache = {}
+        self.model_name = model_name
+        self.model_type = self._detect_model_type(model_name)
+        self.performance_mode = performance_mode
+        self._load_universal_config()
+        
+        logger.info(f"🚀 PromptManager LIMPO - Modelo: {model_name} - Modo: {performance_mode}")
+    
+    def set_model(self, model_name: str):
+        """Altera o modelo dinamicamente"""
+        self.model_name = model_name
+        self.model_type = self._detect_model_type(model_name)
+        self._load_universal_config()
+        logger.info(f"🔄 Modelo alterado para: {model_name}")
+    
+    def _detect_model_type(self, model_name: str) -> str:
+        """Detecta o tipo de modelo"""
+        model_lower = model_name.lower()
+        if 'deepseek-r1' in model_lower:
+            return 'deepseek-r1'
+        elif 'codellama' in model_lower:
+            return 'codellama'
+        elif 'llama3' in model_lower:
+            return 'llama3'
+        elif 'mistral' in model_lower:
+            return 'mistral'
+        else:
+            return 'generic'
+    
+    def set_performance_mode(self, mode: str):
+        """Altera o modo de performance"""
+        if mode in ['fast', 'balanced', 'quality']:
+            self.performance_mode = mode
+            logger.info(f"🔄 Modo alterado para: {mode}")
+    
+    def _load_universal_config(self):
+        """Carrega configurações universais"""
+        try:
+            import importlib.util
+            config_file = Path(__file__).parent.parent / 'config' / 'universal_model_config.py'
+            spec = importlib.util.spec_from_file_location("universal_model_config", config_file)
+            universal_module = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(universal_module)
+            
+            self.combine_prompts_universal = universal_module.combine_prompts_universal
+            logger.info(f"✅ Configurações universais carregadas")
+        except Exception as e:
+            logger.warning(f"⚠️ Erro ao carregar configurações: {str(e)}")
+            self.combine_prompts_universal = lambda x, y, z, w: x
+    
+    def _load_prompt_from_file(self, filename: str) -> str:
+        """Carrega prompt de arquivo com cache"""
+        cache_key = f"prompt_{filename}"
+        
+        if cache_key in self._prompt_cache:
+            return self._prompt_cache[cache_key]
+            
+        try:
+            prompt_path = self.prompts_dir / f"{filename}.txt"
+            if prompt_path.exists():
+                with open(prompt_path, 'r', encoding='utf-8') as f:
+                    content = f.read()
+                    self._prompt_cache[cache_key] = content
+                    return content
+            else:
+                logger.warning(f"Arquivo não encontrado: {filename}.txt")
+                return ""
+        except Exception as e:
+            logger.error(f"Erro ao carregar prompt {filename}: {str(e)}")
+            return ""
     
     def _load_base_prompt(self) -> str:
-        """Carrega o prompt base do arquivo"""
+        """Carrega o prompt base"""
         try:
             base_path = self.prompts_dir / "prompt_base.txt"
             with open(base_path, 'r', encoding='utf-8') as f:
                 return f.read()
         except Exception:
-            return self._get_fallback_base_prompt()
+            return """Você é um ESPECIALISTA em modernização de sistemas Delphi para Java Spring Boot.
+
+MISSÃO: Analisar projetos Delphi e gerar código Java Spring Boot funcional.
+
+RESPONSABILIDADES:
+1. ANÁLISE: Extrair funcionalidades e regras de negócio
+2. CONVERSÃO: Gerar código Java Spring Boot funcional
+3. TESTES: Criar testes unitários abrangentes
+
+TECNOLOGIAS ALVO:
+- Java Spring Boot 3.x
+- Spring Data JPA / Hibernate
+- Spring Web (REST APIs)
+- JUnit 5 + Mockito"""
+
+    def _enhance_prompt_for_model(self, prompt: str, task_type: str = 'analysis') -> str:
+        """Otimiza prompt para o modelo atual"""
+        try:
+            enhanced_prompt = self.combine_prompts_universal(prompt, task_type, self.model_name, self.performance_mode)
+            logger.info(f"✅ Prompt otimizado para {self.model_name}")
+            return enhanced_prompt
+        except Exception as e:
+            logger.warning(f"⚠️ Erro ao otimizar prompt: {str(e)}")
+            return prompt
     
-    def _get_fallback_base_prompt(self) -> str:
-        """Prompt base de fallback se arquivo não existir"""
-        return """
-Você é um especialista em modernização de sistemas legados, especificamente na conversão de projetos Delphi para Java Spring Boot.
-
-Suas responsabilidades:
-1. Analisar código Delphi existente
-2. Criar equivalentes Java Spring modernos
-3. Manter a lógica de negócio original
-4. Aplicar as melhores práticas do Spring Boot
-5. Garantir que o código seja limpo, testável e manutenível
-
-Diretrizes gerais:
-- Use anotações Spring apropriadas
-- Implemente padrões Repository, Service e Controller
-- Mantenha separação clara de responsabilidades
-- Aplique injeção de dependências
-- Use JPA/Hibernate para persistência
-- Crie APIs REST bem estruturadas
-"""
+    # ============================================================================
+    # FUNÇÕES PRINCIPAIS (apenas 4 essenciais)
+    # ============================================================================
 
     def get_analysis_prompt(self) -> str:
-        """Prompt para análise inicial do sistema legacy"""
-        return f"""
-{self.base_prompt}
+        """Retorna prompt para análise de código Delphi"""
+        base_prompt = self.get_backend_analysis_prompt()
+        return self._enhance_prompt_for_model(base_prompt, 'analysis')
 
-## TAREFA: ANÁLISE COMPLETA DO SISTEMA LEGACY
-
-Analise o código Delphi fornecido e extraia informações estruturadas sobre o sistema.
-
-### ANÁLISE OBRIGATÓRIA:
-
-#### 1. IDENTIFICAÇÃO DE FUNCIONALIDADES
-Para cada funcionalidade encontrada, descreva:
-- **Nome da Funcionalidade**: Identificação clara
-- **Propósito**: O que ela faz na prática
-- **Exemplo de Uso**: Como o usuário interage com ela
-- **Componentes Envolvidos**: Forms, botões, campos, procedures
-- **Fluxo de Execução**: Passo a passo da funcionalidade
-
-#### 2. ESTRUTURA DO SISTEMA
-- **Forms/Telas**: Liste todos os formulários e sua finalidade
-- **Unidades/Módulos**: Organize por área funcional
-- **Banco de Dados**: Tabelas, procedures, triggers identificados
-- **Componentes**: Grids, relatórios, menus principais
-
-#### 3. REGRAS DE NEGÓCIO
-- **Validações**: Que dados são validados e como
-- **Cálculos**: Fórmulas e algoritmos encontrados
-- **Fluxos Condicionais**: Decisões baseadas em dados
-- **Integrações**: Conexões com sistemas externos
-
-#### 4. DEPENDÊNCIAS E CORRELAÇÕES
-- **Relacionamentos**: Como as funcionalidades se conectam
-- **Ordem de Execução**: Que funcionalidades dependem de outras
-- **Dados Compartilhados**: Informações usadas em múltiplos lugares
-
-### FORMATO DE RESPOSTA:
-
-Organize a resposta em seções claras:
-
-```
-## FUNCIONALIDADES IDENTIFICADAS
-
-### [Nome da Funcionalidade 1]
-- **Descrição**: [O que faz]
-- **Exemplo de uso**: [Cenário prático]
-- **Componentes**: [Forms, botões, etc.]
-- **Fluxo**: [Passo a passo]
-
-### [Nome da Funcionalidade 2]
-...
-
-## ESTRUTURA DO SISTEMA
-- **Forms**: [Lista de formulários]
-- **Módulos**: [Organização do código]
-- **Banco**: [Estruturas de dados]
-
-## REGRAS DE NEGÓCIO
-- **Validações**: [Que dados são validados]
-- **Cálculos**: [Algoritmos encontrados]
-- **Fluxos**: [Lógicas condicionais]
-
-## CORRELAÇÕES
-- **Dependências**: [Como funcionalidades se relacionam]
-```
-
-Seja detalhado e focado na compreensão funcional do sistema.
-"""
-
-    def get_spring_conversion_prompt(self, documentation_context: str = "") -> str:
-        """Prompt para conversão para Spring Boot com contexto da documentação"""
-        context_section = ""
-        if documentation_context:
-            context_section = f"""
-## CONTEXTO DA DOCUMENTAÇÃO GERADA
-
-{documentation_context}
-
-Use essas informações como base para a conversão, garantindo que:
-- Todos os requisitos funcionais sejam atendidos
-- As características técnicas sejam preservadas
-- Os fluxos de execução e dados sejam mantidos
-- As correlações Delphi→Java sejam aplicadas
-"""
+    def get_backend_analysis_prompt(self) -> str:
+        """Prompt para análise de backend Delphi"""
+        file_prompt = self._load_prompt_from_file("backend_analysis_prompt")
+        if file_prompt:
+            return f"{self.base_prompt}\\n\\n{file_prompt}"
         
         return f"""
 {self.base_prompt}
 
-{context_section}
+## ANÁLISE DE BACKEND DELPHI
 
-## TAREFA: CONVERSÃO PARA JAVA SPRING BOOT COM MAPEAMENTO DETALHADO DE FUNCIONALIDADES
+Analise o código Delphi focando EXCLUSIVAMENTE no backend:
 
-Converta o código Delphi fornecido para Java Spring Boot seguindo estas diretrizes:
+### EXTRAIR:
+1. **Entidades de Dados** - Estruturas, tabelas, relacionamentos
+2. **Regras de Negócio** - Validações, cálculos, processamentos
+3. **Operações CRUD** - Inserir, consultar, atualizar, deletar
+4. **Integrações** - APIs, serviços externos, banco de dados
 
-### 1. MAPEAMENTO OBRIGATÓRIO DE FUNCIONALIDADES
+### MAPEAR PARA SPRING BOOT:
+- Entidades JPA (@Entity)
+- Repositories (@Repository)
+- Services (@Service) 
+- Controllers (@RestController)
 
-{self.get_functionality_mapping_prompt()}
+**FORMATO JSON OBRIGATÓRIO:**
+{{
+  "entities": [{{ "name": "Cliente", "fields": ["id", "nome"], "relationships": [] }}],
+  "business_rules": ["Validar CPF", "Calcular desconto"],
+  "operations": ["cadastrar", "consultar", "atualizar"],
+  "integrations": ["database", "api_externa"]
+}}
+"""
 
-### 2. ESTRUTURA DE PROJETO
+    def get_backend_conversion_prompt(self, docs_context: str = "") -> str:
+        """Prompt para conversão de backend"""
+        file_prompt = self._load_prompt_from_file("backend_conversion_prompt")
+        if file_prompt:
+            base_prompt = f"{self.base_prompt}\\n\\n{file_prompt}"
+            if docs_context:
+                return f"{base_prompt}\\n\\n## CONTEXTO:\\n{docs_context}"
+            return base_prompt
+        
+        prompt = f"""
+{self.base_prompt}
+
+## CONVERSÃO DELPHI → SPRING BOOT
+
+Execute conversão sistemática do backend:
+
+### ESTRUTURA OBRIGATÓRIA:
 ```
-src/main/java/com/projeto/
-├── config/          # Configurações Spring
-├── controller/      # REST Controllers
-├── service/         # Lógica de negócio
-├── repository/      # Acesso a dados
+src/main/java/com/empresa/sistema/
 ├── entity/          # Entidades JPA
-├── dto/             # Data Transfer Objects
-└── exception/       # Tratamento de exceções
+├── repository/      # Repositories
+├── service/         # Lógica de negócio
+├── controller/      # Controllers REST
+└── dto/            # DTOs
 ```
 
-### 3. MAPEAMENTOS TÉCNICOS DETALHADOS
+### IMPLEMENTAR:
+1. **@Entity** - Mapeamento JPA com relacionamentos
+2. **@Repository** - Interfaces com queries customizadas
+3. **@Service** - Lógica de negócio com @Transactional
+4. **@RestController** - APIs REST completas
 
-**TForm → @RestController**:
-- Cada botão/ação → Endpoint REST específico
-- Validações de formulário → Bean Validation
-- Eventos de interface → Métodos de controller
-- Mensagens de feedback → ResponseEntity com status apropriado
-
-**TDataModule → @Repository + @Service**:
-- Cada query SQL → Método Repository com nome descritivo
-- Transações complexas → @Transactional em services
-- Procedimentos de negócio → Métodos de service
-
-### 4. ESTRUTURA DE RESPOSTA OBRIGATÓRIA
-
-Para cada funcionalidade encontrada:
-
-1. **ANÁLISE FUNCIONAL**:
-   - Descrição clara do que a funcionalidade faz
-   - Exemplo prático de uso no sistema original
-   - Regras de negócio envolvidas
-
-2. **MAPEAMENTO DETALHADO**:
-   - Como será implementado em Java Spring
-   - Qual(is) endpoint(s) REST serão criados
-   - Exemplo de requisição/resposta HTTP
-
-3. **CÓDIGO JAVA COMENTADO**:
-   - Implementação completa com comentários explicativos
-   - Relacione cada linha/bloco ao comportamento original
-
-4. **VALIDAÇÃO DE EQUIVALÊNCIA**:
-   - Confirme que a funcionalidade Java produz o mesmo resultado
-   - Liste diferenças (se houver) e justifique
-
-5. **TESTES FUNCIONAIS**:
-   - Testes que validam o comportamento esperado
-   - Cenários baseados nos exemplos de uso originais
-
-### EXEMPLO ESPERADO:
-
-**FUNCIONALIDADE ORIGINAL**: "Botão Calcular Desconto"
-- O que faz: Calcula desconto baseado no valor total e tipo de cliente
-- Exemplo: Cliente VIP com compra de R$ 1000 → aplica 10% desconto → mostra R$ 900
-- Fluxo: Click → valida campos → calcula desconto → atualiza tela
-
-**FUNCIONALIDADE MODERNIZADA**: 
-- Endpoint: POST /api/vendas/calcular-desconto
-- Request: {"valorTotal": 1000, "tipoCliente": "VIP"}
-- Response: {"valorComDesconto": 900, "descontoAplicado": 10}
-- Código: VendaController.calcularDesconto() → DescontoService.aplicar()
-
-Gere código limpo, bem documentado e que preserve EXATAMENTE o comportamento funcional original.
-"""
-
-    def get_entity_mapping_prompt(self) -> str:
-        """Prompt para mapeamento de entidades de banco"""
-        return f"""
-{self.base_prompt}
-
-## TAREFA: MAPEAMENTO DE ENTIDADES JPA
-
-Analise as operações de banco de dados do código Delphi e crie:
-
-### 1. ENTIDADES JPA
-- Classes com anotações @Entity
-- Mapeamento de campos com @Column
-- Relacionamentos com @OneToMany, @ManyToOne, etc.
-- Chaves primárias com @Id e @GeneratedValue
-
-### 2. REPOSITORIES
-- Interfaces estendendo JpaRepository
-- Queries customizadas com @Query
-- Métodos de busca por convenção
-
-### 3. EXEMPLO DE ESTRUTURA
-```java
-@Entity
-@Table(name = "customers")
-public class Customer {{
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
-    
-    @Column(nullable = false)
-    private String name;
-    
-    // ... outros campos
-}}
-
-@Repository
-public interface CustomerRepository extends JpaRepository<Customer, Long> {{
-    List<Customer> findByActiveTrue();
-    
-    @Query("SELECT c FROM Customer c WHERE c.email = :email")
-    Optional<Customer> findByEmail(@Param("email") String email);
-}}
-```
-
-Mantenha a estrutura de dados original mas aplique as melhores práticas JPA.
-"""
-
-    def get_api_design_prompt(self) -> str:
-        """Prompt para design de APIs REST"""
-        return f"""
-{self.base_prompt}
-
-## TAREFA: DESIGN DE API REST
-
-Converta as operações de formulário Delphi em APIs REST seguindo:
-
-### 1. PADRÕES REST
-- GET para consultas
-- POST para criação
-- PUT para atualização completa
-- PATCH para atualização parcial
-- DELETE para remoção
-
-### 2. ESTRUTURA DE CONTROLLER
-```java
-@RestController
-@RequestMapping("/api/customers")
-@Validated
-public class CustomerController {{
-    
-    @Autowired
-    private CustomerService customerService;
-    
-    @GetMapping
-    public ResponseEntity<List<CustomerDTO>> getAllCustomers() {{
-        // implementação
+**FORMATO JSON OBRIGATÓRIO:**
+{{
+  "files": [
+    {{
+      "path": "src/main/java/com/empresa/sistema/entity/Cliente.java",
+      "content": "@Entity\\npublic class Cliente {{ ... }}"
     }}
-    
-    @PostMapping
-    public ResponseEntity<CustomerDTO> createCustomer(@Valid @RequestBody CustomerDTO dto) {{
-        // implementação
-    }}
-    
-    // ... outros endpoints
+  ]
 }}
-```
-
-### 3. DTOs E VALIDAÇÃO
-- Classes DTO para entrada e saída
-- Validações com Bean Validation
-- Mapeamento entre Entity e DTO
-
-### 4. TRATAMENTO DE ERROS
-- @ExceptionHandler para erros específicos
-- ResponseEntity com códigos HTTP apropriados
-- Mensagens de erro padronizadas
-
-### 5. DOCUMENTAÇÃO
-- Comentários Javadoc
-- Preparação para Swagger/OpenAPI
-
-Transforme cada ação de formulário em um endpoint REST bem estruturado.
 """
-
-    def get_service_layer_prompt(self) -> str:
-        """Prompt para camada de serviços"""
-        return f"""
-{self.base_prompt}
-
-## TAREFA: IMPLEMENTAÇÃO DA CAMADA DE SERVIÇOS
-
-Extraia a lógica de negócio do código Delphi para serviços Spring:
-
-### 1. ESTRUTURA DE SERVICE
-```java
-@Service
-@Transactional
-public class CustomerService {{
-    
-    @Autowired
-    private CustomerRepository customerRepository;
-    
-    public CustomerDTO createCustomer(CustomerDTO dto) {{
-        // validações de negócio
-        // conversão DTO → Entity
-        // persistência
-        // conversão Entity → DTO
-        // retorno
-    }}
-}}
-```
-
-### 2. RESPONSABILIDADES
-- Validações de negócio
-- Orquestração de operações
-- Transações
-- Conversão entre DTOs e Entities
-- Tratamento de exceções de negócio
-
-### 3. PADRÕES A APLICAR
-- Um serviço por agregado de negócio
-- Métodos públicos para operações principais
-- Métodos privados para lógica auxiliar
-- Exceptions customizadas para erros de negócio
-
-### 4. TRANSAÇÕES
-- @Transactional em operações que modificam dados
-- Propagação adequada de transações
-- Rollback em exceções de negócio
-
-Mantenha toda a lógica de negócio original mas organize de forma modular e testável.
-"""
+        
+        enhanced_prompt = self._enhance_prompt_for_model(prompt, 'conversion')
+        if docs_context:
+            return f"{enhanced_prompt}\\n\\n## CONTEXTO:\\n{docs_context}"
+        return enhanced_prompt
 
     def get_testing_prompt(self) -> str:
         """Prompt para geração de testes"""
-        return f"""
-{self.base_prompt}
-
-## TAREFA: GERAÇÃO DE TESTES UNITÁRIOS
-
-Crie testes abrangentes para o código Java gerado:
-
-### 1. TESTES DE CONTROLLER
-```java
-@WebMvcTest(CustomerController.class)
-class CustomerControllerTest {{
-    
-    @Autowired
-    private MockMvc mockMvc;
-    
-    @MockBean
-    private CustomerService customerService;
-    
-    @Test
-    void shouldCreateCustomer() throws Exception {{
-        // implementação do teste
-    }}
-}}
-```
-
-### 2. TESTES DE SERVICE
-- Mocks de repositories
-- Validação de lógica de negócio
-- Cenários de sucesso e erro
-- Validação de transações
-
-### 3. TESTES DE REPOSITORY
-- @DataJpaTest para testes de persistência
-- Validação de queries customizadas
-- Testes de relacionamentos
-
-### 4. COBERTURA
-- Teste todas as operações principais
-- Cenários de erro e exceções
-- Validações de entrada
-- Regras de negócio
-
-Gere testes que garantam a qualidade e confiabilidade do código convertido.
-"""
-
-    def get_documentation_enhanced_prompt(self, analysis_results: Dict[str, Any], 
-                                        generated_docs: Dict[str, str]) -> str:
-        """Prompt enriquecido com documentação gerada do projeto"""
-        
-        # Carrega conteúdo dos documentos principais
-        doc_content = self._load_documentation_content(generated_docs)
-        
-        return f"""
-{self.base_prompt}
-
-## CONTEXTO COMPLETO DO PROJETO ANALISADO
-
-### RESUMO DA ANÁLISE
-- **Projeto**: {analysis_results.get('metadata', {}).get('project_name', 'N/A')}
-- **Units Analisadas**: {len(analysis_results.get('units_analysis', {}))}
-- **Complexidade**: {analysis_results.get('characteristics', {}).get('complexity_level', 'N/A')}
-- **Prontidão**: {analysis_results.get('characteristics', {}).get('modernization_readiness', 'N/A')}
-
-### DOCUMENTAÇÃO GERADA
-{doc_content}
-
-### CORRELAÇÕES IDENTIFICADAS
-{self._format_correlations(analysis_results.get('correlations', {}))}
-
-## INSTRUÇÕES PARA MODERNIZAÇÃO
-
-Use TODA a informação acima para:
-
-1. **Preservar Funcionalidades**: Garanta que cada funcionalidade documentada seja implementada
-2. **Aplicar Correlações**: Use os mapeamentos Delphi→Java identificados
-3. **Manter Fluxos**: Preserve os fluxos de execução e dados documentados
-4. **Atender Requisitos**: Implemente todos os requisitos funcionais extraídos
-5. **Seguir Características**: Respeite as características técnicas identificadas
-
-A conversão deve ser fiel ao sistema original mas usando as melhores práticas do Spring Boot.
-"""
-
-    def _load_documentation_content(self, generated_docs: Dict[str, str]) -> str:
-        """Carrega conteúdo resumido dos documentos gerados"""
-        content_parts = []
-        
-        # Prioriza documentos mais importantes para o contexto
-        priority_docs = ['executive_summary', 'requirements', 'correlations', 'characteristics']
-        
-        for doc_key in priority_docs:
-            if doc_key in generated_docs:
-                doc_path = generated_docs[doc_key]
-                try:
-                    with open(doc_path, 'r', encoding='utf-8') as f:
-                        doc_content = f.read()
-                    
-                    # Limita o tamanho para evitar prompt muito longo
-                    if len(doc_content) > 2000:
-                        doc_content = doc_content[:2000] + "...[conteúdo truncado]"
-                    
-                    content_parts.append(f"#### {doc_key.title()}\n{doc_content}\n")
-                except Exception:
-                    continue
-        
-        return "\n".join(content_parts) if content_parts else "Documentação não disponível"
-
-    def _format_correlations(self, correlations: Dict[str, Any]) -> str:
-        """Formata correlações para inclusão no prompt"""
-        if not correlations:
-            return "Correlações não disponíveis"
-        
-        formatted = []
-        
-        # Mapeamentos de componentes
-        component_mappings = correlations.get('component_mappings', [])
-        if component_mappings:
-            formatted.append("**Mapeamentos de Componentes:**")
-            for mapping in component_mappings[:5]:  # Limita a 5 principais
-                formatted.append(f"- {mapping.get('delphi_component', 'N/A')} → {mapping.get('java_equivalent', 'N/A')}")
-        
-        # Mapeamentos de padrões
-        pattern_mappings = correlations.get('pattern_mappings', [])
-        if pattern_mappings:
-            formatted.append("\n**Mapeamentos de Padrões:**")
-            for pattern in pattern_mappings:
-                formatted.append(f"- {pattern.get('delphi_pattern', 'N/A')} → {pattern.get('java_pattern', 'N/A')}")
-        
-        return "\n".join(formatted) if formatted else "Correlações não disponíveis"
-
-    def get_specialized_prompt(self, prompt_type: str, **kwargs) -> str:
-        """Retorna prompt especializado baseado no tipo solicitado"""
-        if prompt_type == 'conversion':
-            # Se há documentação disponível, enriquece o prompt
-            if 'analysis_results' in kwargs and 'generated_docs' in kwargs:
-                docs_context = str(kwargs.get('generated_docs', ''))
-                return self.get_spring_conversion_prompt(docs_context)
-            else:
-                return self.get_spring_conversion_prompt()
-        
-        elif prompt_type == 'analysis':
-            return self.get_analysis_prompt()
-        
-        elif prompt_type == 'documentation':
-            return self.get_documentation_generation_prompt()
-        
-        elif prompt_type == 'functionality_mapping':
-            return self.get_functionality_mapping_prompt()
-        
-        elif prompt_type == 'entity_mapping':
-            return f"""
-{self.base_prompt}
-
-## TAREFA: MAPEAMENTO ESPECÍFICO DE ENTIDADES
-
-Você deve focar APENAS na criação de entidades JPA e DTOs para o sistema Java Spring.
-
-{self.get_functionality_mapping_prompt()}
-
-### FOCO EM ENTIDADES:
-- Identifique todas as estruturas de dados do Delphi
-- Crie entidades JPA correspondentes
-- Defina DTOs para transferência de dados
-- Mapeie relacionamentos entre entidades
-- Configure validações Bean Validation
-"""
-        
-        elif prompt_type == 'api_design':
-            return f"""
-{self.base_prompt}
-
-## TAREFA: DESIGN DE APIs REST
-
-Você deve focar APENAS na criação de Controllers REST para exposição de APIs.
-
-{self.get_functionality_mapping_prompt()}
-
-### FOCO EM APIs:
-- Crie Controllers REST para cada funcionalidade
-- Defina endpoints seguindo padrões RESTful
-- Configure documentação OpenAPI/Swagger
-- Implemente tratamento de erros
-- Configure validação de entrada
-"""
-        
-        elif prompt_type == 'service_layer':
-            return f"""
-{self.base_prompt}
-
-## TAREFA: CAMADA DE SERVIÇOS
-
-Você deve focar APENAS na implementação da lógica de negócio em Services.
-
-{self.get_functionality_mapping_prompt()}
-
-### FOCO EM SERVIÇOS:
-- Implemente Services com lógica de negócio
-- Configure transações
-- Implemente validações de negócio
-- Configure injeção de dependências
-- Implemente padrões de design adequados
-"""
-        
-        elif prompt_type == 'testing':
-            return f"""
-{self.base_prompt}
-
-## TAREFA: GERAÇÃO DE TESTES
-
-Você deve focar APENAS na criação de testes abrangentes.
-
-{self.get_functionality_mapping_prompt()}
-
-### FOCO EM TESTES:
-- Crie testes unitários para Services
-- Crie testes de integração para Controllers
-- Configure mocks e fixtures
-- Implemente testes de cenários de funcionalidades
-- Configure relatórios de cobertura
-"""
-        
+        file_prompt = self._load_prompt_from_file("testing_prompt")
+        if file_prompt:
+            base_prompt = f"{self.base_prompt}\\n\\n{file_prompt}"
         else:
-            # Retorna prompt base como fallback
-            return self.base_prompt
+            base_prompt = f"""
+{self.base_prompt}
+
+## GERAÇÃO DE TESTES UNITÁRIOS
+
+Crie testes completos para o código Java:
+
+### ESTRUTURA DE TESTES:
+1. **Controller Tests** - @WebMvcTest, MockMvc
+2. **Service Tests** - @ExtendWith(MockitoExtension.class)
+3. **Repository Tests** - @DataJpaTest
+
+### IMPLEMENTAR:
+- Testes de todos os endpoints
+- Mockagem de dependências
+- Validação de entrada/saída
+- Testes de exceções
+
+**FORMATO JSON:**
+{{
+  "files": [
+    {{
+      "path": "src/test/java/.../ControllerTest.java",
+      "content": "@SpringBootTest\\npublic class Test {{ ... }}"
+    }}
+  ]
+}}
+"""
+        
+        return self._enhance_prompt_for_model(base_prompt, 'testing')
 
     def get_functionality_mapping_prompt(self) -> str:
-        """Prompt específico para mapeamento detalhado de funcionalidades"""
-        return f"""
+        """Prompt para mapeamento de funcionalidades"""
+        file_prompt = self._load_prompt_from_file("functionality_mapping_prompt")
+        if file_prompt:
+            base_prompt = f"{self.base_prompt}\\n\\n{file_prompt}"
+        else:
+            base_prompt = f"""
 {self.base_prompt}
 
-## TAREFA: MAPEAMENTO DETALHADO DE FUNCIONALIDADES
+## MAPEAMENTO DE FUNCIONALIDADES
 
-Você deve criar um mapeamento completo e detalhado das funcionalidades entre o sistema original (Delphi) e o sistema modernizado (Java Spring).
+Mapeie funcionalidades Delphi para Spring Boot:
 
-### INSTRUÇÕES OBRIGATÓRIAS:
+### IDENTIFICAR:
+1. **Formulários** → Controllers REST
+2. **DataModules** → Services + Repositories
+3. **Componentes DB** → Entidades JPA
+4. **Validações** → Bean Validation
 
-Para CADA funcionalidade identificada, forneça:
-
-#### 1. FUNCIONALIDADE ORIGINAL (Sistema Delphi)
-- **Nome/Identificação**: Nome claro da funcionalidade
-- **Descrição Funcional**: O que ela faz em linguagem natural
-- **Exemplo Prático**: Cenário real de uso (ex: "Usuário clica em 'Salvar' → sistema valida dados → salva no banco → exibe confirmação")
-- **Componentes Técnicos**: Forms, botões, campos, procedures envolvidos
-- **Regras de Negócio**: Validações, cálculos, fluxos condicionais
-- **Entradas/Saídas**: O que recebe e o que produz
-
-#### 2. FUNCIONALIDADE MODERNIZADA (Sistema Java Spring)
-- **Implementação Java**: Como a mesma funcionalidade será implementada em Java
-- **Endpoints REST**: Quais APIs serão criadas
-- **Exemplo de Uso**: Como será acessada (ex: "POST /api/usuarios → UserController.create() → retorna 201")
-- **Fluxo Técnico**: Request → Controller → Service → Repository → Response
-- **Estrutura de Dados**: DTOs, Entities envolvidas
-- **Tratamento de Erros**: Como erros serão gerenciados
-
-#### 3. VALIDAÇÃO DE EQUIVALÊNCIA
-- **Comportamento Idêntico**: Confirme que o resultado final é o mesmo
-- **Diferenças Justificadas**: Se houver mudanças, explique o porquê
-- **Vantagens da Modernização**: Melhorias obtidas com Java Spring
-
-### FORMATO DE RESPOSTA:
-
-```
-## FUNCIONALIDADE: [Nome da Funcionalidade]
-
-### SISTEMA ORIGINAL (Delphi)
-- **O que faz**: [Descrição clara]
-- **Exemplo prático**: [Cenário de uso]
-- **Componentes**: [Forms, botões, etc.]
-- **Fluxo**: [Passo a passo]
-
-### SISTEMA MODERNIZADO (Java Spring)
-- **Implementação**: [Controllers, Services, Repositories]
-- **API**: [Endpoint(s) REST]
-- **Exemplo de uso**: [Request/Response]
-- **Fluxo técnico**: [Arquitetura Spring]
-
-### VALIDAÇÃO
-- **Equivalência**: [Sim/Não e justificativa]
-- **Melhorias**: [Benefícios da modernização]
-```
-
-### EXEMPLOS DE MAPEAMENTO ESPERADO:
-
-#### FUNCIONALIDADE: Cadastro de Cliente
-**ORIGINAL**: Formulário com campos nome, email → botão Salvar → valida campos → insere no banco → mensagem "Cliente salvo com sucesso"
-**MODERNIZADO**: POST /api/clientes → CustomerController.create() → valida DTO → CustomerService.save() → retorna {"id": 123, "message": "Cliente criado"}
-
-#### FUNCIONALIDADE: Busca de Produtos
-**ORIGINAL**: Campo de pesquisa → botão Buscar → query no banco → popula grid com resultados
-**MODERNIZADO**: GET /api/produtos?nome=filtro → ProductController.search() → ProductService.findByName() → retorna List<ProductDTO>
-
-Seja específico, detalhado e mantenha foco na preservação funcional com melhoria técnica.
+**FORMATO JSON:**
+{{
+  "mappings": [
+    {{
+      "delphi_component": "TClienteForm",
+      "spring_equivalent": "ClienteController",
+      "functionality": "CRUD de clientes"
+    }}
+  ]
+}}
 """
+        
+        return self._enhance_prompt_for_model(base_prompt, 'functionality_mapping')
 
-    def get_documentation_generation_prompt(self) -> str:
-        """Prompt para geração de documentação com foco em funcionalidades"""
-        return f"""
-{self.base_prompt}
-
-## TAREFA: GERAÇÃO DE DOCUMENTAÇÃO FOCADA EM FUNCIONALIDADES
-
-Baseado na análise do sistema legacy, gere documentação técnica completa com foco especial no mapeamento de funcionalidades.
-
-### ESTRUTURAS OBRIGATÓRIAS:
-
-#### 1. REQUISITOS FUNCIONAIS
-Para cada funcionalidade identificada:
-- **RF[ID] - Nome da Funcionalidade**
-- **Descrição**: O que ela faz na prática
-- **Exemplo de Uso**: Cenário real de interação
-- **Critérios de Aceitação**: Como validar se funciona corretamente
-- **Prioridade**: Crítica/Alta/Média/Baixa
-
-#### 2. ARQUITETURA FUNCIONAL
-- **Módulos por Área de Negócio**: Agrupamento lógico das funcionalidades
-- **Fluxos de Processo**: Como as funcionalidades se conectam
-- **Dados Compartilhados**: Informações usadas por múltiplas funcionalidades
-- **Integrações**: Comunicação entre módulos
-
-#### 3. ESPECIFICAÇÃO TÉCNICA DETALHADA
-Para cada componente:
-- **Funcionalidade Principal**: O que o componente faz
-- **Entradas e Saídas**: Dados recebidos e produzidos
-- **Regras de Negócio**: Validações e cálculos específicos
-- **Dependências**: O que precisa para funcionar
-
-#### 4. MAPEAMENTO DE EQUIVALÊNCIAS
-Use o prompt específico de mapeamento para criar correlações detalhadas:
-
-{self.get_functionality_mapping_prompt()}
-
-### FORMATO DA DOCUMENTAÇÃO:
-
-```markdown
-# DOCUMENTAÇÃO DO SISTEMA - [Nome do Projeto]
-
-## 1. VISÃO GERAL
-- Propósito do sistema
-- Principais funcionalidades
-- Usuários alvo
-
-## 2. FUNCIONALIDADES IDENTIFICADAS
-
-### [Nome da Funcionalidade 1]
-- **Descrição**: [O que faz]
-- **Exemplo prático**: [Como é usada]
-- **Componentes envolvidos**: [Forms, botões, etc.]
-- **Regras de negócio**: [Validações, cálculos]
-
-## 3. ARQUITETURA FUNCIONAL
-- **Módulos**: [Organização por área]
-- **Fluxos**: [Como se conectam]
-- **Dados**: [Estruturas compartilhadas]
-
-## 4. REQUISITOS FUNCIONAIS
-- RF001 - [Funcionalidade crítica]
-- RF002 - [Funcionalidade importante]
-...
-
-## 5. ESPECIFICAÇÕES TÉCNICAS
-[Detalhes de implementação por componente]
-
-## 6. MAPEAMENTO PARA MODERNIZAÇÃO
-[Equivalências Delphi → Java Spring]
-```
-
-Mantenha foco na compreensão prática das funcionalidades e sua aplicação real.
-"""
-
-# Instância global do PromptManager para uso em todo o sistema
-prompt_manager = PromptManager()
+    # ============================================================================
+    # COMPATIBILIDADE (aliases para manter código existente funcionando)
+    # ============================================================================
+    
+    def get_spring_conversion_prompt(self, documentation_context: str = "") -> str:
+        """Alias para compatibilidade"""
+        return self.get_backend_conversion_prompt(documentation_context)

@@ -9,6 +9,8 @@ import math
 from typing import Dict, List, Any, Optional, Tuple
 import logging
 from datetime import datetime
+from pathlib import Path
+import time
 
 # Configuração do logging
 logging.basicConfig(level=logging.INFO)
@@ -18,51 +20,164 @@ logger = logging.getLogger(__name__)
 import sys
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 
+# Versão simplificada sem dependências de performance
+PERFORMANCE_AVAILABLE = False
+
 try:
     from prompts.specialized_prompts import PromptManager
     PROMPTS_AVAILABLE = True
     logger.info("✅ PromptManager especializado importado com sucesso")
 except ImportError as e:
-    logger.warning(f"⚠️ Falha ao importar PromptManager especializado: {str(e)}")
-    try:
-        from prompts.simple_loader import SimplePromptLoader as PromptManager
-        PROMPTS_AVAILABLE = True
-        logger.info("✅ PromptManager simples importado como fallback")
-    except ImportError:
-        logger.error("❌ Nenhum PromptManager disponível")
-        PROMPTS_AVAILABLE = False
-        # Criar uma classe mock para evitar erros
-        class PromptManager:
-            def get_analysis_prompt(self):
-                return "Você é um especialista em análise de código Delphi."
-            def get_documentation_generation_prompt(self):
-                return "Gere documentação técnica para o projeto."
+    logger.error(f"❌ PromptManager não disponível: {e}")
+    PROMPTS_AVAILABLE = False
+    raise ImportError(f"PromptManager obrigatório não encontrado: {e}")
 
 class LegacyProjectAnalyzer:
     """Analisador avançado de projetos Delphi legados"""
     
-    def __init__(self):
-        """Inicializa o analisador"""
+    def __init__(self, prompt_manager=None):
+        """
+        Inicializa o analisador de projetos legados
+        
+        Args:
+            prompt_manager: Gerenciador de prompts especializado (opcional)
+        """
+        
+        # Versão do analisador
         self.version = "1.0.0"
-        self.project_info = {}
-        self.units_analysis = {}
-        self.business_logic = {}
-        self.data_flows = {}
-        self.execution_flows = {}
-        self.correlations = {}
-        self.requirements = {}
-        self.characteristics = {}
         
-        # Inicializa PromptManager com validação
-        self.prompt_manager = PromptManager()
-        if PROMPTS_AVAILABLE:
-            logger.info("✅ LegacyProjectAnalyzer configurado com prompts especializados")
+    def __init__(self, prompt_manager=None):
+        """
+        Inicializa o analisador de projetos legados
+        
+        Args:
+            prompt_manager: Gerenciador de prompts especializado (obrigatório)
+        """
+        
+        # Versão do analisador
+        self.version = "1.0.0"
+        
+        # Configura prompt manager (obrigatório)
+        if prompt_manager is not None:
+            self.prompt_manager = prompt_manager
+            logger.info("✅ PromptManager especializado fornecido externamente")
         else:
-            logger.warning("⚠️ LegacyProjectAnalyzer usando prompts básicos (fallback)")
-            
-        # Flag para indicar se prompts especializados estão ativos
-        self.using_specialized_prompts = PROMPTS_AVAILABLE
+            # Inicializa prompt manager internamente
+            from prompts.specialized_prompts import PromptManager
+            self.prompt_manager = PromptManager()
+            logger.info("✅ PromptManager especializado inicializado internamente")
         
+        # Configuração da API
+        self.groq_api_key = None
+        self.groq_model = 'llama3-70b-8192'
+        
+        # Inicializa LLM service
+        self.llm_service = None
+        self._initialize_llm_service()
+        
+        # Inicializa gerador de documentação
+        from core.documentation_generator import DocumentationGenerator
+        self.doc_generator = DocumentationGenerator(
+            llm_service=self.llm_service,  # Passa o LLM service
+            prompt_manager=self.prompt_manager
+        )
+        logger.info("✅ DocumentationGenerator inicializado com LLM service e prompt_manager")
+    
+    def _initialize_llm_service(self):
+        """Inicializa o LLM service"""
+        from core.llm_service import LLMService
+        
+        # Cria configuração para o LLM
+        config = {
+            'groq_api_key': self.groq_api_key,
+            'groq_model': self.groq_model
+        }
+        
+        # Cria instância do serviço com prompt_manager
+        self.llm_service = LLMService(config, prompt_manager=self.prompt_manager)
+        logger.info("✅ LLM Service inicializado")
+    
+    def update_api_config(self, groq_api_key: str = None, groq_model: str = None):
+        """Atualiza configuração da API e reinicializa o LLM service"""
+        if groq_api_key:
+            self.groq_api_key = groq_api_key
+        if groq_model:
+            self.groq_model = groq_model
+        
+        # Reinicializa o LLM service com nova configuração
+        self._initialize_llm_service()
+        
+        # Atualiza o doc_generator também
+        if self.doc_generator:
+            self.doc_generator.llm_service = self.llm_service
+            logger.info("✅ LLM Service atualizado no DocumentationGenerator")
+
+    def _generate_with_ai(self, prompt: str, context: str) -> str:
+        """
+        Gera análise usando IA com prompt e contexto
+        
+        Args:
+            prompt: Prompt para a IA
+            context: Contexto do projeto
+            
+        Returns:
+            Análise gerada pela IA
+            
+        Raises:
+            Exception: Se LLM service não estiver configurado ou falhar
+        """
+        # Validação obrigatória do LLM service
+        if not self.llm_service:
+            raise Exception("LLM service não configurado. Configure a API antes de usar análise com IA.")
+        
+        # Validação de entrada
+        if not prompt or not prompt.strip():
+            raise Exception("Prompt não pode estar vazio.")
+        
+        if not context or not context.strip():
+            raise Exception("Contexto do projeto não pode estar vazio.")
+        
+        try:
+            # Combina prompt e contexto
+            full_prompt = f"{prompt}\n\n## CONTEXTO DO PROJETO:\n{context}"
+            
+            # Gera resposta com parâmetros corretos
+            response = self.llm_service.generate_code(
+                delphi_structure={"prompt": full_prompt},  # Usa estrutura correta
+                rag_context=context,  # Adiciona o parâmetro obrigatório
+                prompt_config={"analysis_prompt": full_prompt}
+            )
+            
+            # Trata diferentes tipos de resposta
+            if isinstance(response, dict):
+                # Se for dict, extrai o conteúdo relevante
+                if 'analysis' in response:
+                    return response['analysis']
+                elif 'content' in response:
+                    return response['content']
+                else:
+                    return str(response)
+            else:
+                return str(response)
+                
+        except ImportError as e:
+            raise Exception(f"Módulo LLMService não disponível: {e}")
+        except Exception as e:
+            raise Exception(f"Erro ao gerar análise com IA: {e}")
+
+
+    def configure_api(self, api_key: str, model: str = 'llama3-70b-8192'):
+        """
+        Configura API da IA
+        
+        Args:
+            api_key: Chave da API
+            model: Modelo a ser usado
+        """
+        self.groq_api_key = api_key
+        self.groq_model = model
+        logger.info(f"✅ API configurada: {model}")
+
     def analyze_complete_project(self, project_path: str, project_name: str = None) -> Dict[str, Any]:
         """
         Realiza análise completa do projeto Delphi
@@ -183,7 +298,7 @@ class LegacyProjectAnalyzer:
                     'variables': self._extract_variables(content),
                     'constants': self._extract_constants(content),
                     'database_operations': self._extract_database_operations(content),
-                    'user_interface': self._extract_ui_elements(content),
+                    'backend_elements': self._extract_backend_elements(content),
                     'business_rules': self._extract_business_rules(content),
                     'complexity_metrics': self._calculate_complexity_metrics(content)
                 }
@@ -396,497 +511,602 @@ class LegacyProjectAnalyzer:
             logger.error(f"Erro na geração de correlações: {str(e)}")
             return correlations
     
-    def analyze_project(self, project_path: str, **kwargs) -> Dict[str, Any]:
-        """
-        Analisa projeto Delphi completo e retorna dados estruturados
+    def analyze_project(self, project_path: str, project_name: str = None) -> Dict[str, Any]:
+        """Analisa projeto Delphi de forma otimizada"""
+        start_time = time.time()
+        logger.info(f"🚀 Iniciando análise otimizada do projeto: {project_path}")
         
-        Args:
-            project_path: Caminho para o projeto
-            **kwargs: Configurações adicionais
-            
-        Returns:
-            Dicionário com análise completa do projeto
-        """
+        # Se project_name não foi fornecido, extrai do caminho
+        if project_name is None:
+            project_name = Path(project_path).name
+        
         try:
-            logger.info(f"Iniciando análise do projeto: {project_path}")
+            # Otimiza lista de arquivos
+            all_files = list(Path(project_path).rglob('*'))
+            optimized_files = performance_optimizer.optimize_file_analysis(all_files)
             
-            # Configurações da análise
-            config = {
-                'project_name': kwargs.get('project_name', 'Unknown Project'),
-                'include_comments': kwargs.get('include_comments', True),
-                'analyze_business_logic': kwargs.get('analyze_business_logic', True),
-                'generate_correlations': kwargs.get('generate_correlations', True)
-            }
+            # Processa arquivos em lotes
+            results = batch_processor.process_files_in_batches(
+                optimized_files, 
+                self._analyze_single_file_optimized
+            )
             
-            # Coleta informações básicas do projeto
-            project_info = self.extract_project_info(project_path)
+            # Combina resultados
+            combined_results = self._combine_analysis_results(results)
             
-            # Análise de cada unit
-            units_analysis = self.analyze_units(project_path)
+            elapsed_time = time.time() - start_time
+            logger.info(f"✅ Análise concluída em {elapsed_time:.2f}s")
             
-            # Extrai características do sistema
-            characteristics = self.extract_system_characteristics(units_analysis)
+            return combined_results
             
-            # Identifica fluxos de execução
-            execution_flows = self.identify_execution_flows(units_analysis)
+        except Exception as e:
+            logger.error(f"❌ Erro na análise otimizada: {str(e)}")
+            raise Exception(f"Falha na análise do projeto: {str(e)}")
+    
+    def _analyze_single_file_optimized(self, file_path: Path) -> Optional[Dict[str, Any]]:
+        """Analisa um único arquivo de forma otimizada"""
+        try:
+            # Verifica cache primeiro
+            cache_key = f"{file_path}_{file_path.stat().st_mtime}"
+            cached_result = cache_manager.get(cache_key)
+            if cached_result:
+                return cached_result
             
-            # Mapeia fluxos de dados
-            data_flows = self.map_data_flows(units_analysis)
+            # Lê arquivo de forma otimizada
+            content = streaming_reader.read_file_optimized(file_path)
+            if not content:
+                return None
             
-            # Extrai requisitos do sistema
-            requirements = self.extract_requirements(units_analysis, project_info)
+            # Analisa conteúdo
+            analysis = self._analyze_file_content_optimized(content, file_path)
             
-            # Monta resultado final
-            analysis_result = {
+            # Salva no cache
+            cache_manager.set(cache_key, analysis)
+            
+            return analysis
+            
+        except Exception as e:
+            logger.error(f"❌ Erro analisando arquivo {file_path}: {str(e)}")
+            return None
+    
+    def _analyze_file_content_optimized(self, content: str, file_path: Path) -> Dict[str, Any]:
+        """Analisa conteúdo do arquivo de forma otimizada"""
+        # Implementação otimizada da análise
+        analysis = {
+            'file_path': str(file_path),
+            'file_size': len(content),
+            'classes': self._extract_classes_fast(content),
+            'functions': self._extract_functions_fast(content),
+            'imports': self._extract_imports_fast(content)
+        }
+        
+        return analysis
+    
+    def _extract_classes_fast(self, content: str) -> List[Dict[str, Any]]:
+        """Extração rápida de classes"""
+        classes = []
+        lines = content.split('\n')
+        
+        for i, line in enumerate(lines):
+            line_stripped = line.strip().lower()
+            if line_stripped.startswith('type ') and '= class' in line_stripped:
+                class_name = self._extract_class_name_fast(line)
+                if class_name:
+                    classes.append({
+                        'name': class_name,
+                        'line': i + 1,
+                        'type': 'class'
+                    })
+        
+        return classes
+    
+    def _extract_functions_fast(self, content: str) -> List[Dict[str, Any]]:
+        """Extração rápida de funções"""
+        functions = []
+        lines = content.split('\n')
+        
+        for i, line in enumerate(lines):
+            line_stripped = line.strip().lower()
+            if (line_stripped.startswith('function ') or 
+                line_stripped.startswith('procedure ')):
+                func_name = self._extract_function_name_fast(line)
+                if func_name:
+                    functions.append({
+                        'name': func_name,
+                        'line': i + 1,
+                        'type': 'function' if 'function' in line_stripped else 'procedure'
+                    })
+        
+        return functions
+    
+    def _extract_imports_fast(self, content: str) -> List[str]:
+        """Extração rápida de imports"""
+        imports = []
+        lines = content.split('\n')
+        
+        in_uses_section = False
+        for line in lines:
+            line_stripped = line.strip()
+            
+            if line_stripped.lower().startswith('uses '):
+                in_uses_section = True
+                # Extrai unidades da linha uses
+                uses_line = line_stripped[5:].replace(';', '').strip()
+                imports.extend([u.strip() for u in uses_line.split(',') if u.strip()])
+            elif in_uses_section:
+                if ';' in line:
+                    in_uses_section = False
+                else:
+                    # Continua coletando unidades
+                    uses_line = line_stripped.replace(';', '').strip()
+                    imports.extend([u.strip() for u in uses_line.split(',') if u.strip()])
+        
+        return imports
+    
+    def _extract_class_name_fast(self, line: str) -> Optional[str]:
+        """Extrai nome da classe rapidamente"""
+        try:
+            # Procura por padrão: type NomeClasse = class
+            parts = line.strip().split()
+            for i, part in enumerate(parts):
+                if part.lower() == 'type' and i + 1 < len(parts):
+                    class_name = parts[i + 1]
+                    # Remove caracteres especiais
+                    class_name = class_name.replace('=', '').strip()
+                    if class_name and class_name.isidentifier():
+                        return class_name
+            return None
+        except:
+            return None
+    
+    def _extract_function_name_fast(self, line: str) -> Optional[str]:
+        """Extrai nome da função/procedimento rapidamente"""
+        try:
+            # Procura por padrão: function/procedure NomeFuncao
+            line_stripped = line.strip()
+            if line_stripped.lower().startswith('function ') or line_stripped.lower().startswith('procedure '):
+                # Remove 'function ' ou 'procedure '
+                start_pos = 9 if line_stripped.lower().startswith('function ') else 10
+                rest = line_stripped[start_pos:].strip()
+                
+                # Pega o nome até encontrar ( ou :
+                func_name = ''
+                for char in rest:
+                    if char in '(:;':
+                        break
+                    func_name += char
+                
+                func_name = func_name.strip()
+                if func_name and func_name.replace('_', '').isalnum():
+                    return func_name
+            return None
+        except:
+            return None
+    
+    def _combine_analysis_results(self, results: List[Any]) -> Dict[str, Any]:
+        """Combina resultados da análise em lotes"""
+        try:
+            combined = {
+                'files_analyzed': len([r for r in results if r]),
+                'total_classes': 0,
+                'total_functions': 0,
+                'total_imports': 0,
+                'files': [],
+                'summary': {},
                 'metadata': {
-                    'project_name': config['project_name'],
                     'analysis_date': datetime.now().isoformat(),
-                    'analyzer_version': self.version,
-                    'total_files_analyzed': project_info.get('total_files', 0),
-                    'analysis_config': config
-                },
-                'project_info': project_info,
-                'units_analysis': units_analysis,
-                'characteristics': characteristics,
-                'execution_flows': execution_flows,
-                'data_flows': data_flows,
-                'requirements': requirements
+                    'analysis_type': 'optimized_batch',
+                    'performance_optimized': True
+                }
             }
             
-            logger.info(f"Análise concluída: {len(units_analysis)} units analisadas")
-            return analysis_result
+            all_classes = []
+            all_functions = []
+            all_imports = []
             
-        except Exception as e:
-            logger.error(f"Erro na análise do projeto: {str(e)}")
-            raise Exception(f"Falha na análise: {str(e)}")
-
-    def extract_project_info(self, project_path: str) -> Dict[str, Any]:
-        """Extrai informações básicas do projeto"""
-        try:
-            project_info = {
-                'project_path': project_path,
-                'total_files': 0,
-                'file_counts': {'pascal_units': 0, 'forms': 0, 'projects': 0, 'others': 0},
-                'delphi_version': 'Unknown',
-                'architecture_type': 'Desktop'
-            }
-            
-            # Conta arquivos por tipo
-            for root, dirs, files in os.walk(project_path):
-                for file in files:
-                    project_info['total_files'] += 1
+            for result in results:
+                if result and isinstance(result, dict):
+                    combined['files'].append(result)
                     
-                    if file.endswith('.pas'):
-                        project_info['file_counts']['pascal_units'] += 1
-                    elif file.endswith('.dfm'):
-                        project_info['file_counts']['forms'] += 1
-                    elif file.endswith(('.dpr', '.dpk')):
-                        project_info['file_counts']['projects'] += 1
-                    else:
-                        project_info['file_counts']['others'] += 1
+                    # Extrai classes
+                    classes = result.get('classes', [])
+                    all_classes.extend(classes)
+                    
+                    # Extrai functions
+                    functions = result.get('functions', [])
+                    all_functions.extend(functions)
+                    
+                    # Extrai imports
+                    imports = result.get('imports', [])
+                    all_imports.extend(imports)
             
-            # Tenta identificar versão do Delphi através de arquivos de projeto
-            for root, dirs, files in os.walk(project_path):
-                for file in files:
-                    if file.endswith('.dpr'):
-                        dpr_path = os.path.join(root, file)
-                        try:
-                            with open(dpr_path, 'r', encoding='utf-8', errors='ignore') as f:
-                                content = f.read()
-                                if 'program' in content.lower():
-                                    project_info['architecture_type'] = 'Desktop Application'
-                                elif 'library' in content.lower():
-                                    project_info['architecture_type'] = 'Library/DLL'
-                        except:
-                            pass
+            # Contadores
+            combined['total_classes'] = len(all_classes)
+            combined['total_functions'] = len(all_functions)
+            combined['total_imports'] = len(set(all_imports))  # Remove duplicados
             
-            return project_info
-            
-        except Exception as e:
-            logger.error(f"Erro ao extrair informações do projeto: {str(e)}")
-            return {'error': str(e)}
-
-    def analyze_units(self, project_path: str) -> Dict[str, Any]:
-        """Analisa todas as units do projeto"""
-        units_analysis = {}
-        
-        try:
-            # Encontra todos os arquivos Pascal
-            for root, dirs, files in os.walk(project_path):
-                for file in files:
-                    if file.endswith('.pas'):
-                        file_path = os.path.join(root, file)
-                        unit_name = os.path.splitext(file)[0]
-                        
-                        try:
-                            unit_data = self.analyze_single_unit(file_path)
-                            units_analysis[unit_name] = unit_data
-                        except Exception as e:
-                            logger.warning(f"Erro ao analisar unit {unit_name}: {str(e)}")
-                            units_analysis[unit_name] = {'error': str(e), 'file_path': file_path}
-            
-            return units_analysis
-            
-        except Exception as e:
-            logger.error(f"Erro na análise de units: {str(e)}")
-            return {'error': str(e)}
-
-    def analyze_single_unit(self, file_path: str) -> Dict[str, Any]:
-        """Analisa uma única unit Pascal"""
-        try:
-            with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
-                content = f.read()
-            
-            unit_data = {
-                'file_path': file_path,
-                'lines_count': len(content.splitlines()),
-                'unit_type': self._detect_unit_type(content),
-                'classes': self._extract_classes(content),
-                'procedures_functions': self._extract_procedures_functions(content),
-                'uses_units': self._extract_uses_units(content),
-                'database_operations': self._extract_database_operations(content),
-                'complexity_metrics': self._calculate_complexity(content),
-                'comments': self._extract_comments(content)
+            # Summary
+            combined['summary'] = {
+                'files_processed': len(combined['files']),
+                'classes_found': combined['total_classes'],
+                'functions_found': combined['total_functions'],
+                'unique_imports': combined['total_imports'],
+                'analysis_method': 'optimized_performance'
             }
             
-            return unit_data
+            logger.info(f"✅ Análise combinada concluída: {combined['total_classes']} classes, {combined['total_functions']} funções")
+            return combined
             
         except Exception as e:
-            logger.error(f"Erro ao analisar unit {file_path}: {str(e)}")
-            return {'error': str(e), 'file_path': file_path}
+            logger.error(f"❌ Erro ao combinar resultados: {str(e)}")
+            # Retorna estrutura básica em caso de erro
+            return {
+                'files_analyzed': len(results),
+                'total_classes': 0,
+                'total_functions': 0,
+                'total_imports': 0,
+                'files': [],
+                'summary': {'error': str(e)},
+                'metadata': {
+                    'analysis_date': datetime.now().isoformat(),
+                    'analysis_type': 'fallback',
+                    'error': str(e)
+                }
+            }
+    
+ 
 
-    def _detect_unit_type(self, content: str) -> str:
-        """Detecta o tipo da unit baseado no conteúdo"""
-        content_lower = content.lower()
+
+
+    def analyze_project_with_prompts(self, project_path: str, project_name: str = None) -> Dict[str, Any]:
+        """Analisa projeto usando prompts especializados"""
+        try:
+            logger.info(f"🔍 Iniciando análise com prompts especializados: {project_path}")
+            
+            # Verifica se tem prompts especializados
+            if not hasattr(self, 'using_specialized_prompts'):
+                self.using_specialized_prompts = self.prompt_manager is not None
+            
+            if not self.using_specialized_prompts:
+                logger.warning("⚠️ Prompts especializados não disponíveis, usando análise padrão")
+                return self.analyze_project(project_path, project_name)
+            
+            # Análise estrutural básica
+            structural_analysis = self.analyze_project(project_path, project_name)
+            
+            # Enriquece com análise baseada em prompts
+            if self.prompt_manager:
+                try:
+                    # Gera contexto do projeto
+                    project_context = self._generate_project_context(structural_analysis)
+                    
+                    # Usa prompt de análise especializado
+                    analysis_prompt = self.prompt_manager.get_analysis_prompt()
+                    
+                    # Gera análise com IA
+                    enhanced_analysis = self._generate_with_ai(analysis_prompt, project_context)
+                    
+                    # Combina análises
+                    structural_analysis['enhanced_analysis'] = enhanced_analysis
+                    structural_analysis['used_specialized_prompts'] = True
+                    
+                    logger.info("✅ Análise com prompts especializados concluída")
+                    
+                except Exception as e:
+                    logger.error(f"❌ Erro na análise com prompts: {str(e)}")
+                    structural_analysis['enhanced_analysis'] = "Erro na análise com prompts especializados"
+                    structural_analysis['used_specialized_prompts'] = False
+            
+            return structural_analysis
+            
+        except Exception as e:
+            logger.error(f"❌ Erro na análise com prompts: {str(e)}")
+            # Fallback para análise padrão
+            return self.analyze_project(project_path, project_name)
+
+    def _generate_project_context(self, analysis_results: Dict[str, Any]) -> str:
+        """Gera contexto do projeto de forma segura"""
+        try:
+            context_parts = []
+            
+            # Verifica se analysis_results é válido
+            if not isinstance(analysis_results, dict):
+                logger.warning(f"⚠️ analysis_results não é dict: {type(analysis_results)}")
+                return "Análise básica do projeto concluída."
+            
+            # Extrai informações seguramente
+            files_data = analysis_results.get('files', {})
+            if isinstance(files_data, dict):
+                total_files = len(files_data)
+                context_parts.append(f"Projeto analisado: {total_files} arquivos")
+                
+                # Conta classes e funções de forma segura
+                total_classes = 0
+                total_functions = 0
+                
+                for file_path, file_data in files_data.items():
+                    if isinstance(file_data, dict):
+                        classes = file_data.get('classes', [])
+                        functions = file_data.get('functions', [])
+                        
+                        if isinstance(classes, list):
+                            total_classes += len(classes)
+                        if isinstance(functions, list):
+                            total_functions += len(functions)
+                
+                context_parts.append(f"Total: {total_classes} classes, {total_functions} funções")
+            
+            # Adiciona informações de tecnologia
+            context_parts.append("Tecnologia: Delphi/Pascal")
+            context_parts.append("Destino: Java Spring Boot")
+            
+            return " | ".join(context_parts)
+            
+        except Exception as e:
+            logger.error(f"❌ Erro gerando contexto: {str(e)}")
+            return "Projeto Delphi analisado para modernização Spring Boot"
+    
+    def _collect_delphi_files(self, project_path: str) -> List[str]:
+        """Coleta todos os arquivos Delphi do projeto"""
+        delphi_files = []
         
-        if 'tform' in content_lower or 'inherited' in content_lower:
-            return 'form'
-        elif 'tdatamodule' in content_lower or 'datamodule' in content_lower:
-            return 'datamodule'
-        elif 'class(' in content_lower or 'class ' in content_lower:
-            return 'class'
-        elif 'interface' in content_lower and 'implementation' in content_lower:
-            return 'unit'
-        else:
+        try:
+            delphi_extensions = ['.pas', '.dfm', '.dpr', '.dpk', '.inc']
+            
+            for root, dirs, files in os.walk(project_path):
+                for file in files:
+                    if any(file.lower().endswith(ext) for ext in delphi_extensions):
+                        file_path = os.path.join(root, file)
+                        delphi_files.append(file_path)
+            
+            return delphi_files
+            
+        except Exception as e:
+            logger.error(f"Erro ao coletar arquivos Delphi: {str(e)}")
+            return []
+
+    def set_analysis_options(self, options: Dict[str, bool]):
+        """Define opções de análise"""
+        self.analysis_options = options
+        logger.info(f"Opções de análise configuradas: {options}")
+
+    def _should_include_comments(self) -> bool:
+        """Verifica se deve incluir análise de comentários"""
+        return getattr(self, 'analysis_options', {}).get('include_comments', True)
+
+    def _should_analyze_business_logic(self) -> bool:
+        """Verifica se deve analisar lógica de negócio"""
+        return getattr(self, 'analysis_options', {}).get('analyze_business_logic', True)
+
+    def _should_generate_correlations(self) -> bool:
+        """Verifica se deve gerar correlações"""
+        return getattr(self, 'analysis_options', {}).get('generate_correlations', True)
+
+    def _count_files_by_type(self, delphi_files: List[str]) -> Dict[str, int]:
+        """Conta arquivos por tipo de extensão"""
+        file_counts = {
+            'pas': 0,
+            'dfm': 0,
+            'dpr': 0,
+            'dpk': 0,
+            'inc': 0,
+            'others': 0
+        }
+        
+        try:
+            for file_path in delphi_files:
+                ext = os.path.splitext(file_path)[1].lower()
+                
+                if ext == '.pas':
+                    file_counts['pas'] += 1
+                elif ext == '.dfm':
+                    file_counts['dfm'] += 1
+                elif ext == '.dpr':
+                    file_counts['dpr'] += 1
+                elif ext == '.dpk':
+                    file_counts['dpk'] += 1
+                elif ext == '.inc':
+                    file_counts['inc'] += 1
+                else:
+                    file_counts['others'] += 1
+            
+            return file_counts
+            
+        except Exception as e:
+            logger.error(f"Erro ao contar arquivos: {str(e)}")
+            return file_counts
+
+    def _analyze_file(self, file_path: str) -> Dict[str, Any]:
+        """Analisa um arquivo Delphi individual"""
+        try:
+            content = self._read_file_safe(file_path)
+            
+            if not content:
+                return {
+                    'error': 'Arquivo vazio ou não pôde ser lido',
+                    'file_path': file_path
+                }
+            
+            file_analysis = {
+                'file_path': file_path,
+                'file_size': len(content),
+                'lines_count': len(content.splitlines()),
+                'unit_type': self._classify_unit_type(content, os.path.basename(file_path)),
+                'classes': self._extract_classes(content),
+                'methods': self._extract_procedures_functions(content),
+                'uses_clauses': self._extract_uses_units(content),
+                'complexity_metrics': self._calculate_complexity(content)
+            }
+            
+            return file_analysis
+            
+        except Exception as e:
+            logger.error(f"Erro ao analisar arquivo {file_path}: {str(e)}")
+            return {
+                'error': str(e),
+                'file_path': file_path
+            }
+
+    def _determine_file_type(self, file_analysis: Dict[str, Any]) -> str:
+        """Determina o tipo do arquivo baseado na análise"""
+        try:
+            unit_type = file_analysis.get('unit_type', 'unknown')
+            
+            if unit_type in ['form', 'datamodule']:
+                return unit_type
+            elif unit_type in ['class', 'unit']:
+                return 'unit'
+            else:
+                return 'unknown'
+                
+        except Exception as e:
+            logger.error(f"Erro ao determinar tipo do arquivo: {str(e)}")
             return 'unknown'
 
-    def _extract_classes(self, content: str) -> List[Dict[str, Any]]:
-        """Extrai classes do código"""
-        classes = []
-        
-        # Pattern para classes Delphi
-        class_pattern = re.compile(r'(\w+)\s*=\s*class\s*\(([^)]*)\)', re.IGNORECASE)
-        
-        for match in class_pattern.finditer(content):
-            class_name = match.group(1)
-            parent_class = match.group(2).strip() if match.group(2) else None
-            
-            classes.append({
-                'name': class_name,
-                'parent_class': parent_class,
-                'purpose': self._infer_class_purpose(class_name, parent_class)
-            })
-        
-        return classes
-
-    def _extract_procedures_functions(self, content: str) -> List[Dict[str, Any]]:
-        """Extrai procedures e functions"""
-        procedures = []
-        
-        # Patterns para procedures e functions
-        proc_pattern = re.compile(r'(procedure|function)\s+(\w+)', re.IGNORECASE)
-        
-        for match in proc_pattern.finditer(content):
-            proc_type = match.group(1).lower()
-            proc_name = match.group(2)
-            
-            procedures.append({
-                'name': proc_name,
-                'type': proc_type,
-                'purpose': self._infer_procedure_purpose(proc_name),
-                'complexity': self._calculate_procedure_complexity(content, proc_name)
-            })
-        
-        return procedures
-
-    def _extract_uses_units(self, content: str) -> List[str]:
-        """Extrai units referenciadas na cláusula uses"""
-        uses_units = []
-        
-        uses_pattern = re.compile(r'uses\s+(.*?);', re.DOTALL | re.IGNORECASE)
-        match = uses_pattern.search(content)
-        
-        if match:
-            uses_content = match.group(1)
-            # Remove comentários e quebras de linha
-            uses_content = re.sub(r'\{.*?\}', '', uses_content)
-            uses_content = re.sub(r'//.*', '', uses_content)
-            
-            units = [unit.strip() for unit in uses_content.split(',')]
-            uses_units = [unit for unit in units if unit]
-        
-        return uses_units
-
-    def _extract_database_operations(self, content: str) -> List[Dict[str, Any]]:
-        """Extrai operações de banco de dados"""
-        db_operations = []
-        
-        # Patterns para operações de BD
-        db_patterns = [
-            (r'(Query\w*|Table\w*)\s*\.\s*(Open|Close|ExecSQL)', 'query_operation'),
-            (r'(SQL\w*)\s*\.\s*(Add|Clear)', 'sql_manipulation'),
-            (r'(Transaction\w*)\s*\.\s*(StartTransaction|Commit|Rollback)', 'transaction'),
-            (r'(Connection\w*)\s*\.\s*(Connect|Disconnect)', 'connection')
-        ]
-        
-        for pattern, operation_type in db_patterns:
-            matches = re.finditer(pattern, content, re.IGNORECASE)
-            for match in matches:
-                db_operations.append({
-                    'name': match.group(0),
-                    'type': operation_type,
-                    'description': f"{operation_type.replace('_', ' ').title()} operation"
-                })
-        
-        return db_operations
-
-    def _calculate_complexity(self, content: str) -> Dict[str, int]:
-        """Calcula métricas de complexidade"""
-        lines = content.splitlines()
-        
-        metrics = {
-            'lines_of_code': len([line for line in lines if line.strip() and not line.strip().startswith('//')]),
-            'cyclomatic_complexity': self._calculate_cyclomatic_complexity(content),
-            'function_count': len(re.findall(r'(procedure|function)\s+\w+', content, re.IGNORECASE)),
-            'class_count': len(re.findall(r'\w+\s*=\s*class\s*\(', content, re.IGNORECASE)),
-            'nesting_depth': self._calculate_nesting_depth(content)
-        }
-        
-        return metrics
-
-    def _calculate_cyclomatic_complexity(self, content: str) -> int:
-        """Calcula complexidade ciclomática básica"""
-        # Conta estruturas de controle que aumentam complexidade
-        complexity_keywords = [
-            r'\bif\b', r'\bwhile\b', r'\bfor\b', r'\brepeat\b',
-            r'\bcase\b', r'\btry\b', r'\band\b', r'\bor\b'
-        ]
-        
-        total_complexity = 1  # Complexidade base
-        
-        for keyword in complexity_keywords:
-            matches = re.findall(keyword, content, re.IGNORECASE)
-            total_complexity += len(matches)
-        
-        return total_complexity
-
-    def _calculate_nesting_depth(self, content: str) -> int:
-        """Calcula profundidade máxima de aninhamento"""
-        max_depth = 0
-        current_depth = 0
-        
-        begin_keywords = ['begin', 'try', 'case']
-        end_keywords = ['end', 'except', 'finally']
-        
-        lines = content.splitlines()
-        
-        for line in lines:
-            line_clean = line.strip().lower()
-            
-            for keyword in begin_keywords:
-                if keyword in line_clean:
-                    current_depth += 1
-                    max_depth = max(max_depth, current_depth)
-            
-            for keyword in end_keywords:
-                if keyword in line_clean:
-                    current_depth = max(0, current_depth - 1)
-        
-        return max_depth
-
-    def _extract_comments(self, content: str) -> List[str]:
-        """Extrai comentários do código"""
-        comments = []
-        
-        # Comentários de linha única
-        single_line_comments = re.findall(r'//\s*(.+)', content)
-        comments.extend(single_line_comments)
-        
-        # Comentários de bloco
-        block_comments = re.findall(r'\{\s*(.*?)\s*\}', content, re.DOTALL)
-        comments.extend(block_comments)
-        
-        # Limpa e filtra comentários
-        comments = [comment.strip() for comment in comments if comment.strip()]
-        
-        return comments
-
-    def _infer_class_purpose(self, class_name: str, parent_class: str) -> str:
-        """Infere o propósito de uma classe baseado no nome e herança"""
-        name_lower = class_name.lower()
-        parent_lower = parent_class.lower() if parent_class else ""
-        
-        if 'form' in name_lower or 'tform' in parent_lower:
-            return 'User Interface Form'
-        elif 'datamodule' in name_lower or 'tdatamodule' in parent_lower:
-            return 'Data Access Module'
-        elif 'service' in name_lower or 'manager' in name_lower:
-            return 'Business Logic Service'
-        elif 'helper' in name_lower or 'util' in name_lower:
-            return 'Utility Class'
-        else:
-            return 'General Purpose Class'
-
-    def _infer_procedure_purpose(self, proc_name: str) -> str:
-        """Infere o propósito de uma procedure/function"""
-        name_lower = proc_name.lower()
-        
-        if 'click' in name_lower or 'btn' in name_lower:
-            return 'User Interface Event'
-        elif 'create' in name_lower or 'insert' in name_lower:
-            return 'Data Creation'
-        elif 'update' in name_lower or 'modify' in name_lower:
-            return 'Data Update'
-        elif 'delete' in name_lower or 'remove' in name_lower:
-            return 'Data Deletion'
-        elif 'get' in name_lower or 'find' in name_lower or 'select' in name_lower:
-            return 'Data Retrieval'
-        elif 'validate' in name_lower or 'check' in name_lower:
-            return 'Data Validation'
-        elif 'calculate' in name_lower or 'compute' in name_lower:
-            return 'Calculation/Processing'
-        else:
-            return 'General Processing'
-
-    def _calculate_procedure_complexity(self, content: str, proc_name: str) -> int:
-        """Calcula complexidade de uma procedure específica"""
-        # Encontra o corpo da procedure
-        proc_pattern = re.compile(f'procedure\\s+{proc_name}.*?begin(.*?)end;', re.DOTALL | re.IGNORECASE)
-        match = proc_pattern.search(content)
-        
-        if match:
-            proc_body = match.group(1)
-            return self._calculate_cyclomatic_complexity(proc_body)
-        
-        return 1
-
-    def _extract_classes_detailed(self, content: str) -> List[Dict[str, Any]]:
-        """Extrai classes com análise detalhada"""
-        classes = []
-        
-        # Pattern para classes Delphi
-        class_pattern = re.compile(r'(\w+)\s*=\s*class\s*\(([^)]*)\)', re.IGNORECASE)
-        
-        for match in class_pattern.finditer(content):
-            class_name = match.group(1)
-            parent_class = match.group(2).strip() if match.group(2) else None
-            
-            class_info = {
-                'name': class_name,
-                'parent_class': parent_class,
-                'purpose': self._infer_class_purpose(class_name, parent_class),
-                'visibility_sections': self._extract_visibility_sections(content, class_name),
-                'methods': self._extract_class_methods_detailed(content, class_name),
-                'properties': self._extract_class_properties(content, class_name),
-                'fields': self._extract_class_fields(content, class_name),
-                'events': self._extract_class_events(content, class_name)
-            }
-            
-            classes.append(class_info)
-        
-        return classes
-    
-    def _extract_procedures_functions_detailed(self, content: str) -> List[Dict[str, Any]]:
-        """Extrai procedures e functions com análise detalhada"""
-        procedures = []
-        
-        # Patterns para procedures e functions
-        proc_pattern = re.compile(
-            r'(procedure|function)\s+(\w+)\s*(\([^)]*\))?\s*(?::\s*(\w+))?\s*;',
-            re.IGNORECASE
-        )
-        
-        for match in proc_pattern.finditer(content):
-            proc_type = match.group(1).lower()
-            proc_name = match.group(2)
-            parameters = match.group(3) if match.group(3) else ""
-            return_type = match.group(4) if match.group(4) else None
-            
-            # Extrai corpo da procedure/function
-            proc_body = self._extract_procedure_body(content, proc_name)
-            
-            proc_info = {
-                'name': proc_name,
-                'type': proc_type,
-                'parameters': self._parse_parameters(parameters),
-                'return_type': return_type,
-                'body': proc_body,
-                'complexity_metrics': {
-                    'cyclomatic_complexity': self._calculate_function_complexity(proc_body)
-                },
-                'function_calls': self._extract_function_calls(proc_body),
-                'purpose': self._infer_function_purpose(proc_name, proc_body),
-                'description': f"{proc_type.title()} {proc_name}"
-            }
-            
-            procedures.append(proc_info)
-        
-        return procedures
-    
-    def _calculate_complexity_metrics(self, content: str) -> Dict[str, Any]:
-        """Calcula métricas de complexidade detalhadas"""
-        lines = content.splitlines()
-        
-        metrics = {
-            'lines_of_code': len([line for line in lines if line.strip() and not line.strip().startswith('//')]),
-            'cyclomatic_complexity': self._calculate_cyclomatic_complexity(content),
-            'function_count': len(re.findall(r'(procedure|function)\s+\w+', content, re.IGNORECASE)),
-            'class_count': len(re.findall(r'\w+\s*=\s*class\s*\(', content, re.IGNORECASE)),
-            'nesting_depth': self._calculate_max_nesting_depth(content),
-            'comment_ratio': self._calculate_comment_ratio(content),
-            'maintainability_index': self._calculate_maintainability_index(content)
-        }
-        
-        return metrics
-    
-    def _calculate_maintainability_index(self, content: str) -> float:
-        """Calcula índice de manutenibilidade simplificado"""
+    def _calculate_complexity_metrics_summary(self, analysis_results: Dict[str, Any]) -> Dict[str, Any]:
+        """Calcula métricas de complexidade resumidas para o projeto"""
         try:
-            loc = len([line for line in content.splitlines() if line.strip()])
-            complexity = self._calculate_cyclomatic_complexity(content)
-            comment_ratio = self._calculate_comment_ratio(content)
+            metrics = {
+                'average_complexity': 0,
+                'max_complexity': 0,
+                'total_lines': 0,
+                'methods_with_high_complexity': 0
+            }
             
-            # Fórmula simplificada do índice de manutenibilidade
-            if loc == 0:
-                return 0.0
+            total_complexity = 0
+            total_methods = 0
             
-            volume = loc * 4.32  # Estimativa de volume de Halstead simplificada
-            maintainability = max(0, (171 - 5.2 * math.log(volume) - 0.23 * complexity - 16.2 * math.log(loc) + 50 * math.sin(math.sqrt(2.4 * comment_ratio))) / 171)
+            # Analisa todos os arquivos
+            for file_path, file_data in analysis_results.get('files', {}).items():
+                if isinstance(file_data, dict) and 'complexity_metrics' in file_data:
+                    file_complexity = file_data['complexity_metrics']
+                    
+                    # Soma complexidade
+                    if 'cyclomatic_complexity' in file_complexity:
+                        complexity = file_complexity['cyclomatic_complexity']
+                        total_complexity += complexity
+                        total_methods += 1
+                        
+                        if complexity > metrics['max_complexity']:
+                            metrics['max_complexity'] = complexity
+                        
+                        if complexity > 10:  # Considera alta complexidade
+                            metrics['methods_with_high_complexity'] += 1
+                    
+                    # Soma linhas
+                    if 'lines_of_code' in file_complexity:
+                        metrics['total_lines'] += file_complexity['lines_of_code']
             
-            return round(maintainability, 2)
+            # Calcula média
+            if total_methods > 0:
+                metrics['average_complexity'] = round(total_complexity / total_methods, 2)
             
-        except:
-            return 0.5  # Valor padrão
+            return metrics
+            
+        except Exception as e:
+            logger.error(f"Erro ao calcular métricas: {str(e)}")
+            return {'error': 'Métricas não disponíveis'}
+
+    def _identify_main_functionalities(self, analysis_results: Dict[str, Any]) -> List[str]:
+        """Identifica as funcionalidades principais do projeto"""
+        try:
+            functionalities = []
+            
+            # Analisa forms para identificar funcionalidades
+            forms_analysis = analysis_results.get('forms_analysis', {})
+            for form_path, form_data in forms_analysis.items():
+                if isinstance(form_data, dict):
+                    form_name = os.path.basename(form_path).replace('.pas', '')
+                    classes = form_data.get('classes', [])
+                    
+                    for cls in classes:
+                        if isinstance(cls, dict):
+                            methods = form_data.get('methods', [])
+                            event_handlers = [m for m in methods if isinstance(m, dict) and 'click' in m.get('name', '').lower()]
+                            
+                            if event_handlers:
+                                func_name = f"Interface {form_name} com {len(event_handlers)} interações"
+                                functionalities.append(func_name)
+            
+            # Analisa datamodules para operações de dados
+            datamodules_analysis = analysis_results.get('datamodules_analysis', {})
+            for dm_path, dm_data in datamodules_analysis.items():
+                if isinstance(dm_data, dict):
+                    dm_name = os.path.basename(dm_path).replace('.pas', '')
+                    
+                    # Conta métodos e operações
+                    methods = dm_data.get('methods', [])
+                    if methods:
+                        func_name = f"Módulo de dados {dm_name} com {len(methods)} operações"
+                        functionalities.append(func_name)
+            
+            return functionalities[:10]  # Limita a 10 funcionalidades principais
+            
+        except Exception as e:
+            logger.error(f"Erro ao identificar funcionalidades: {str(e)}")
+            return ["Funcionalidades não identificadas devido a erro"]
+
+    def _generate_modernization_recommendations(self, analysis_results: Dict[str, Any]) -> List[str]:
+        """Gera recomendações de modernização baseadas na análise"""
+        try:
+            recommendations = []
+            
+            summary = analysis_results.get('summary', {})
+            
+            # Recomendações baseadas na estrutura
+            if summary.get('total_forms', 0) > 0:
+                recommendations.append("Converter formulários Delphi em APIs REST + frontend moderno")
+            
+            if summary.get('total_datamodules', 0) > 0:
+                recommendations.append("Migrar DataModules para Services e Repositories Spring Boot")
+            
+            # Recomendações baseadas na complexidade
+            complexity = summary.get('complexity_metrics', {})
+            if isinstance(complexity, dict) and complexity.get('average_complexity', 0) > 10:
+                recommendations.append("Refatorar métodos com alta complexidade ciclomática")
+            
+            # Recomendações gerais
+            recommendations.extend([
+                "Implementar arquitetura em camadas (Controller, Service, Repository)",
+                "Adicionar validações Bean Validation",
+                "Configurar Spring Security para autenticação/autorização",
+                "Implementar testes unitários e de integração",
+                "Configurar CI/CD para deploy automatizado"
+            ])
+            
+            return recommendations
+            
+        except Exception as e:
+            logger.error(f"Erro ao gerar recomendações: {str(e)}")
+            return ["Recomendações não disponíveis devido a erro"]
     
     # Placeholder para métodos adicionais que serão implementados conforme necessário
-    def _extract_dependencies(self, content: str) -> List[str]: return []
-    def _extract_variables(self, content: str) -> List[Dict]: return []
-    def _extract_constants(self, content: str) -> List[Dict]: return []
-    def _extract_database_operations(self, content: str) -> List[Dict]: return []
-    def _extract_ui_elements(self, content: str) -> List[Dict]: return []
-    def _extract_business_rules(self, content: str) -> List[str]: return []
-    def _analyze_form_file(self, content: str) -> Dict: return {}
-    def _is_validation_function(self, proc: Dict) -> bool: return False
-    def _extract_calculations(self, unit_data: Dict) -> List[Dict]: return []
-    def _determine_data_direction(self, db_op: Dict) -> str: return 'bidirectional'
-    def _analyze_form_data_flows(self, unit_data: Dict) -> List[Dict]: return []
-    def _analyze_inter_unit_flows(self, unit_name: str, unit_data: Dict) -> List[Dict]: return []
-    def _find_main_project_unit(self) -> Optional[Dict]: return None
-    def _analyze_startup_sequence(self, main_project: Dict) -> List[Dict]: return []
-    def _extract_user_workflows(self, unit_name: str, unit_data: Dict) -> List[Dict]: return []
-    def _analyze_error_handling(self) -> List[Dict]: return []
-    def _extract_functional_requirements(self, unit_name: str, unit_data: Dict) -> List[Dict]: return []
-    def _identify_non_functional_requirements(self) -> List[Dict]: return []
+    def _extract_backend_elements(self, content: str) -> List[Dict]: 
+        """Extrai elementos relacionados ao backend (DataModules, validações, etc.)"""
+        backend_elements = []
+        
+        # Procura por componentes de dados
+        data_components = re.findall(r'(TQuery|TTable|TDataSet|TClientDataSet|TADOQuery|TADOTable|TFDQuery|TFDTable)\s*:\s*(\w+)', content, re.IGNORECASE)
+        for comp_type, comp_name in data_components:
+            backend_elements.append({
+                'type': 'data_component',
+                'component_type': comp_type,
+                'name': comp_name,
+                'purpose': 'data_access'
+            })
+        
+        # Procura por validações de negócio
+        validation_patterns = re.findall(r'(function|procedure)\s+(\w*validat\w*|check\w*|verify\w*)', content, re.IGNORECASE)
+        for func_type, func_name in validation_patterns:
+            backend_elements.append({
+                'type': 'validation',
+                'function_type': func_type,
+                'name': func_name,
+                'purpose': 'business_validation'
+            })
+        
+        return backend_elements
+    
     def _extract_business_requirements(self) -> List[Dict]: return []
     def _identify_technical_requirements(self) -> List[Dict]: return []
     def _identify_architecture_pattern(self) -> str: return 'layered'
@@ -897,10 +1117,7 @@ class LegacyProjectAnalyzer:
     def _identify_risk_factors(self) -> List[str]: return []
     def _identify_system_strengths(self) -> List[str]: return []
     def _identify_system_weaknesses(self) -> List[str]: return []
-    def _generate_unit_correlations(self, unit_name: str, unit_data: Dict) -> List[Dict]: return []
-    def _generate_pattern_mappings(self) -> List[Dict]: return []
-    def _generate_architecture_mappings(self) -> List[Dict]: return []
-    def _generate_technology_mappings(self) -> List[Dict]: return []
+    
     def _calculate_project_size(self, delphi_files: Dict) -> str: return 'medium'
     def _identify_main_units(self, delphi_files: Dict) -> List[str]: return []
     def _detect_delphi_version(self, delphi_files: Dict) -> str: return 'unknown'
@@ -1309,6 +1526,260 @@ class LegacyProjectAnalyzer:
                     return f.read()
             except:
                 return ""
+
+    def _extract_classes(self, content: str) -> List[Dict[str, Any]]:
+        """Extrai informações sobre classes do código Delphi"""
+        classes = []
+        
+        try:
+            # Padrão para identificar classes
+            class_pattern = r'type\s+(\w+)\s*=\s*class\s*(?:\(([^)]+)\))?\s*([^;]+);'
+            
+            matches = re.finditer(class_pattern, content, re.IGNORECASE | re.MULTILINE)
+            
+            for match in matches:
+                class_name = match.group(1)
+                parent_class = match.group(2) if match.group(2) else None
+                class_body = match.group(3) if match.group(3) else ""
+                
+                # Extrai métodos da classe
+                methods = self._extract_class_methods(class_body)
+                
+                # Extrai propriedades da classe
+                properties = self._extract_class_properties(class_body)
+                
+                class_info = {
+                    'name': class_name,
+                    'parent_class': parent_class,
+                    'methods': methods,
+                    'properties': properties,
+                    'is_form': 'TForm' in (parent_class or ''),
+                    'is_datamodule': 'TDataModule' in (parent_class or ''),
+                    'visibility_sections': self._extract_visibility_sections(class_body)
+                }
+                
+                classes.append(class_info)
+            
+            return classes
+            
+        except Exception as e:
+            logger.error(f"Erro ao extrair classes: {str(e)}")
+            return []
+
+    def _extract_class_methods(self, class_body: str) -> List[Dict[str, Any]]:
+        """Extrai métodos de uma classe"""
+        methods = []
+        
+        try:
+            # Padrões para procedimentos e funções
+            procedure_pattern = r'(?:procedure|function)\s+(\w+)(?:\([^)]*\))?(?:\s*:\s*\w+)?;'
+            
+            matches = re.finditer(procedure_pattern, class_body, re.IGNORECASE)
+            
+            for match in matches:
+                method_name = match.group(1)
+                
+                methods.append({
+                    'name': method_name,
+                    'type': 'procedure' if match.group(0).lower().startswith('procedure') else 'function',
+                    'is_event_handler': method_name.lower().startswith('on') or 'click' in method_name.lower(),
+                    'visibility': self._determine_method_visibility(match.start(), class_body)
+                })
+            
+            return methods
+            
+        except Exception as e:
+            logger.error(f"Erro ao extrair métodos: {str(e)}")
+            return []
+
+    def _extract_class_properties(self, class_body: str) -> List[Dict[str, Any]]:
+        """Extrai propriedades de uma classe"""
+        properties = []
+        
+        try:
+            # Padrão para propriedades
+            property_pattern = r'property\s+(\w+)\s*:\s*(\w+)(?:\s+read\s+(\w+))?(?:\s+write\s+(\w+))?;'
+            
+            matches = re.finditer(property_pattern, class_body, re.IGNORECASE)
+            
+            for match in matches:
+                prop_name = match.group(1)
+                prop_type = match.group(2)
+                read_method = match.group(3)
+                write_method = match.group(4)
+                
+                properties.append({
+                    'name': prop_name,
+                    'type': prop_type,
+                    'read_method': read_method,
+                    'write_method': write_method,
+                    'is_read_only': read_method and not write_method
+                })
+            
+            return properties
+            
+        except Exception as e:
+            logger.error(f"Erro ao extrair propriedades: {str(e)}")
+            return []
+
+    def _extract_visibility_sections(self, class_body: str) -> Dict[str, List[str]]:
+        """Extrai seções de visibilidade da classe"""
+        sections = {
+            'private': [],
+            'protected': [],
+            'public': [],
+            'published': []
+        }
+        
+        try:
+            # Divide o corpo da classe por seções de visibilidade
+            current_section = 'private'  # Padrão Delphi
+            
+            lines = class_body.split('\n')
+            for line in lines:
+                line = line.strip().lower()
+                
+                if line.startswith('private'):
+                    current_section = 'private'
+                elif line.startswith('protected'):
+                    current_section = 'protected'
+                elif line.startswith('public'):
+                    current_section = 'public'
+                elif line.startswith('published'):
+                    current_section = 'published'
+                elif line and not line.startswith('//'):
+                    sections[current_section].append(line)
+            
+            return sections
+            
+        except Exception as e:
+            logger.error(f"Erro ao extrair seções de visibilidade: {str(e)}")
+            return sections
+
+    def _determine_method_visibility(self, method_position: int, class_body: str) -> str:
+        """Determina a visibilidade de um método baseado na posição"""
+        try:
+            # Encontra a seção de visibilidade mais próxima antes do método
+            text_before = class_body[:method_position].lower()
+            
+            visibility_keywords = ['published', 'public', 'protected', 'private']
+            
+            for keyword in visibility_keywords:
+                if keyword in text_before:
+                    last_occurrence = text_before.rfind(keyword)
+                    if last_occurrence != -1:
+                        return keyword
+            
+            return 'private'  # Padrão Delphi
+            
+        except Exception as e:
+            logger.error(f"Erro ao determinar visibilidade: {str(e)}")
+            return 'private'
+
+    def _extract_procedures_functions(self, content: str) -> List[Dict[str, Any]]:
+        """Extrai procedimentos e funções globais"""
+        procedures = []
+        
+        try:
+            # Padrão para procedimentos e funções globais
+            proc_pattern = r'(?:procedure|function)\s+(\w+)(?:\([^)]*\))?(?:\s*:\s*(\w+))?;'
+            
+            matches = re.finditer(proc_pattern, content, re.IGNORECASE)
+            
+            for match in matches:
+                proc_name = match.group(1)
+                return_type = match.group(2)
+                
+                procedures.append({
+                    'name': proc_name,
+                    'type': 'function' if return_type else 'procedure',
+                    'return_type': return_type,
+                    'complexity': self._calculate_method_complexity(match.start(), content)
+                })
+            
+            return procedures
+            
+        except Exception as e:
+            logger.error(f"Erro ao extrair procedimentos/funções: {str(e)}")
+            return []
+
+    def _extract_uses_units(self, content: str) -> List[str]:
+        """Extrai units usadas no código"""
+        uses_units = []
+        
+        try:
+            # Padrão para cláusulas uses
+            uses_pattern = r'uses\s+([^;]+);'
+            
+            matches = re.finditer(uses_pattern, content, re.IGNORECASE | re.MULTILINE)
+            
+            for match in matches:
+                units_text = match.group(1)
+                # Remove comentários e espaços
+                units_text = re.sub(r'\{[^}]*\}', '', units_text)
+                units_text = re.sub(r'//.*$', '', units_text, flags=re.MULTILINE)
+                
+                # Separa por vírgula
+                units = [unit.strip() for unit in units_text.split(',')]
+                uses_units.extend(units)
+            
+            return list(set(uses_units))  # Remove duplicatas
+            
+        except Exception as e:
+            logger.error(f"Erro ao extrair uses: {str(e)}")
+            return []
+
+    def _calculate_complexity(self, content: str) -> Dict[str, Any]:
+        """Calcula métricas de complexidade do código"""
+        try:
+            lines = content.split('\n')
+            
+            # Conta estruturas de controle
+            control_structures = ['if', 'for', 'while', 'repeat', 'case', 'try']
+            complexity_count = 0
+            
+            for line in lines:
+                line_lower = line.lower().strip()
+                for structure in control_structures:
+                    if line_lower.startswith(structure + ' '):
+                        complexity_count += 1
+            
+            return {
+                'lines_of_code': len([line for line in lines if line.strip()]),
+                'cyclomatic_complexity': max(1, complexity_count),
+                'comment_lines': len([line for line in lines if line.strip().startswith('//')]),
+                'blank_lines': len([line for line in lines if not line.strip()])
+            }
+            
+        except Exception as e:
+            logger.error(f"Erro ao calcular complexidade: {str(e)}")
+            return {
+                'lines_of_code': 0,
+                'cyclomatic_complexity': 1,
+                'comment_lines': 0,
+                'blank_lines': 0
+            }
+
+    def _calculate_method_complexity(self, method_start: int, content: str) -> int:
+        """Calcula complexidade de um método específico"""
+        try:
+            # Encontra o final do método
+            method_end = content.find('end;', method_start)
+            if method_end == -1:
+                return 1
+            
+            method_content = content[method_start:method_end]
+            control_structures = ['if', 'for', 'while', 'repeat', 'case']
+            
+            complexity = 1  # Complexidade base
+            for structure in control_structures:
+                complexity += method_content.lower().count(structure + ' ')
+            
+            return complexity
+            
+        except Exception as e:
+            logger.error(f"Erro ao calcular complexidade do método: {str(e)}")
+            return 1
     
     def _classify_unit_type(self, content: str, unit_name: str) -> str:
         """Classifica o tipo da unit baseado no conteúdo"""
@@ -1331,235 +1802,96 @@ class LegacyProjectAnalyzer:
             return 'unknown'
 
     def extract_business_logic(self, units_analysis: Dict[str, Any]) -> Dict[str, Any]:
-        """Método público para extrair lógica de negócio"""
+        """
+        Extrai lógica de negócio das unidades analisadas
+        
+        Args:
+            units_analysis: Análise das unidades do projeto
+            
+        Returns:
+            Análise da lógica de negócio
+        """
         try:
-            # Atualiza análise interna
-            self.units_analysis = units_analysis
-            # Chama método privado
-            return self._extract_business_logic()
-        except Exception as e:
-            logger.error(f"Erro ao extrair lógica de negócio: {str(e)}")
-            return {'error': str(e)}
-
-    def generate_delphi_java_correlations(self, analysis_results: Dict[str, Any]) -> Dict[str, Any]:
-        """Método público para gerar correlações Delphi→Java"""
-        try:
-            # Atualiza análise interna
-            self.units_analysis = analysis_results.get('units_analysis', {})
-            self.project_info = analysis_results.get('project_info', {})
-            # Chama método privado
-            return self._generate_correlations()
-        except Exception as e:
-            logger.error(f"Erro ao gerar correlações: {str(e)}")
-            return {'error': str(e)}
-
-    def analyze_project_with_prompts(self, project_path: str, uploaded_files: List[Dict]) -> Dict:
-        """Análise completa usando prompts especializados para mapeamento de funcionalidades"""
-        try:
-            logger.info("🚀 INICIANDO ANÁLISE COM PROMPTS ESPECIALIZADOS")
-            logger.info(f"Prompts especializados ativos: {self.using_specialized_prompts}")
+            # Verifica se tem prompts especializados
+            if not hasattr(self, 'using_specialized_prompts'):
+                self.using_specialized_prompts = self.prompt_manager is not None
             
-            # Extrair código dos arquivos
-            code_content = self._extract_code_from_files(uploaded_files)
-            
-            # Usar prompt especializado para análise com foco em funcionalidades
-            analysis_prompt = self.prompt_manager.get_analysis_prompt()
-            logger.info(f"📝 Usando prompt de análise: {analysis_prompt[:100]}...")
-            
-            # Análise principal com IA
-            ai_analysis = self._analyze_with_ai(code_content, analysis_prompt)
-            
-            # Processamento estrutural padrão
-            structural_data = self._process_structural_analysis(uploaded_files)
-            
-            # Combinar análises
-            result = {
-                'functional_analysis': ai_analysis,
-                'structural_data': structural_data,
-                'prompt_used': 'specialized_functionality_analysis',
-                'using_specialized_prompts': self.using_specialized_prompts,
-                'analysis_timestamp': datetime.now().isoformat()
+            # Análise básica da lógica de negócio
+            business_logic = {
+                'services': [],
+                'entities': [],
+                'utilities': [],
+                'forms': [],
+                'data_modules': []
             }
             
-            logger.info("✅ ANÁLISE COM PROMPTS ESPECIALIZADOS CONCLUÍDA")
-            return result
+            # Processa cada unidade
+            for unit_name, unit_data in units_analysis.items():
+                if isinstance(unit_data, dict):
+                    unit_type = unit_data.get('type', 'unknown')
+                    
+                    if unit_type == 'service':
+                        business_logic['services'].append({
+                            'name': unit_name,
+                            'methods': unit_data.get('methods', []),
+                            'properties': unit_data.get('properties', [])
+                        })
+                    elif unit_type == 'form':
+                        business_logic['forms'].append({
+                            'name': unit_name,
+                            'controls': unit_data.get('controls', []),
+                            'events': unit_data.get('events', [])
+                        })
+                    elif unit_type == 'datamodule':
+                        business_logic['data_modules'].append({
+                            'name': unit_name,
+                            'components': unit_data.get('components', []),
+                            'connections': unit_data.get('connections', [])
+                        })
+                    elif unit_type == 'class':
+                        business_logic['entities'].append({
+                            'name': unit_name,
+                            'properties': unit_data.get('properties', []),
+                            'methods': unit_data.get('methods', [])
+                        })
+                    elif unit_type == 'utility':
+                        business_logic['utilities'].append({
+                            'name': unit_name,
+                            'functions': unit_data.get('functions', [])
+                        })
+            
+            # Enriquece com análise baseada em prompts se disponível
+            if self.using_specialized_prompts and self.prompt_manager:
+                try:
+                    # Usa prompt de análise de backend (substituindo business_analysis)
+                    backend_prompt = self.prompt_manager.get_backend_analysis_prompt()
+                    
+                    # Gera contexto da análise
+                    context = f"Análise de unidades: {str(units_analysis)[:1000]}..."
+                    
+                    # Gera análise com IA
+                    enhanced_analysis = self._generate_with_ai(backend_prompt, context)
+                    business_logic['enhanced_analysis'] = enhanced_analysis
+                    business_logic['used_specialized_prompts'] = True
+                    
+                    logger.info("✅ Análise de negócio com prompts especializados concluída")
+                    
+                except Exception as e:
+                    logger.error(f"❌ Erro na análise de negócio com prompts: {str(e)}")
+                    business_logic['enhanced_analysis'] = "Erro na análise com prompts especializados"
+                    business_logic['used_specialized_prompts'] = False
+            else:
+                business_logic['used_specialized_prompts'] = False
+            
+            return business_logic
             
         except Exception as e:
-            logger.error(f"❌ Erro na análise com prompts: {e}")
-            return {'error': str(e)}
-    
-    def generate_documentation_with_mapping(self, analysis_data: Dict) -> Dict:
-        """Gera documentação usando prompt especializado para mapeamento"""
-        try:
-            logger.info("📚 INICIANDO GERAÇÃO DE DOCUMENTAÇÃO COM PROMPTS ESPECIALIZADOS")
-            logger.info(f"Prompts especializados ativos: {self.using_specialized_prompts}")
-            
-            # Validação dos dados de entrada
-            if not analysis_data or 'error' in analysis_data:
-                logger.warning("Dados de análise inválidos ou com erro")
-                return {'error': 'Dados de análise inválidos'}
-            
-            # Usar prompt específico para documentação com foco em funcionalidades
-            doc_prompt = self.prompt_manager.get_documentation_generation_prompt()
-            logger.info(f"📝 Usando prompt de documentação: {doc_prompt[:100]}...")
-            
-            # Contexto da análise - limitado para evitar prompts muito grandes
-            try:
-                # Remove dados muito volumosos para o prompt
-                filtered_data = {
-                    'metadata': analysis_data.get('metadata', {}),
-                    'project_info': analysis_data.get('project_info', {}),
-                    'characteristics': analysis_data.get('characteristics', {}),
-                    'requirements': analysis_data.get('requirements', {}),
-                    'units_count': len(analysis_data.get('units_analysis', {})),
-                    'using_specialized_prompts': analysis_data.get('using_specialized_prompts', False)
-                }
-                analysis_context = json.dumps(filtered_data, indent=2, ensure_ascii=False)
-            except Exception as json_error:
-                logger.warning(f"Erro ao serializar dados para JSON: {json_error}")
-                analysis_context = f"Projeto: {analysis_data.get('metadata', {}).get('project_name', 'Unknown')}"
-            
-            # Gerar documentação com IA usando prompt especializado
-            documentation = self._generate_with_ai(analysis_context, doc_prompt)
-            
+            logger.error(f"❌ Erro na extração de lógica de negócio: {str(e)}")
             return {
-                'documentation': documentation,
-                'mapping_included': True,
-                'prompt_used': 'specialized_documentation_with_mapping',
-                'generation_timestamp': datetime.now().isoformat()
+                'error': str(e),
+                'services': [],
+                'entities': [],
+                'utilities': [],
+                'forms': [],
+                'data_modules': []
             }
-            
-        except Exception as e:
-            logger.error(f"Erro na geração de documentação: {e}")
-            return {'error': str(e)}
-
-    def _extract_code_from_files(self, uploaded_files: List[Dict]) -> str:
-        """Extrai conteúdo dos arquivos para análise"""
-        try:
-            combined_content = ""
-            for file_info in uploaded_files:
-                file_name = file_info.get('name', 'unknown')
-                content = file_info.get('content', '')
-                
-                combined_content += f"\n\n// === Arquivo: {file_name} ===\n"
-                combined_content += content
-                
-            return combined_content
-        except Exception as e:
-            logger.error(f"Erro ao extrair código dos arquivos: {e}")
-            return ""
-    
-    def _analyze_with_ai(self, code_content: str, prompt: str) -> Dict:
-        """Análise usando IA (placeholder - implementar integração com LLM)"""
-        try:
-            # TODO: Implementar integração real com LLM (Groq/Ollama)
-            # Por enquanto, retorna estrutura básica
-            return {
-                'functionalities_identified': [
-                    'Sistema possui funcionalidades de interface de usuário',
-                    'Operações de banco de dados identificadas',
-                    'Lógica de negócio presente em procedures/functions'
-                ],
-                'functional_mapping': [
-                    {
-                        'name': 'Interface Principal',
-                        'description': 'Formulário principal do sistema',
-                        'components': ['Forms', 'Buttons', 'Grids'],
-                        'purpose': 'Interação com usuário'
-                    }
-                ],
-                'ai_analysis_performed': True,
-                'prompt_used': 'specialized_functionality_analysis'
-            }
-        except Exception as e:
-            logger.error(f"Erro na análise com IA: {e}")
-            return {'error': str(e), 'ai_analysis_performed': False}
-    
-    def _process_structural_analysis(self, uploaded_files: List[Dict]) -> Dict:
-        """Processa análise estrutural dos arquivos"""
-        try:
-            structural_data = {
-                'files_processed': len(uploaded_files),
-                'file_types': {},
-                'total_lines': 0,
-                'estimated_complexity': 'Medium'
-            }
-            
-            for file_info in uploaded_files:
-                file_type = file_info.get('type', 'unknown')
-                content = file_info.get('content', '')
-                lines = len(content.splitlines())
-                
-                if file_type not in structural_data['file_types']:
-                    structural_data['file_types'][file_type] = 0
-                structural_data['file_types'][file_type] += 1
-                structural_data['total_lines'] += lines
-            
-            return structural_data
-        except Exception as e:
-            logger.error(f"Erro na análise estrutural: {e}")
-            return {'error': str(e)}
-    
-    def _generate_with_ai(self, context: str, prompt: str) -> str:
-        """Gera documentação usando IA (placeholder - implementar integração com LLM)"""
-        try:
-            # TODO: Implementar integração real com LLM
-            # Por enquanto, retorna documentação básica estruturada
-            return f"""
-# DOCUMENTAÇÃO DO SISTEMA COM MAPEAMENTO DE FUNCIONALIDADES
-
-## 1. FUNCIONALIDADES IDENTIFICADAS
-
-### Funcionalidade 1: Interface Principal
-- **Descrição**: Formulário principal que serve como ponto de entrada do sistema
-- **Exemplo de uso**: Usuário acessa sistema → formulário principal é exibido → menu de opções disponível
-- **Componentes**: Forms, Menus, Botões de navegação
-- **Fluxo**: Inicialização → Apresentação da interface → Aguarda interação do usuário
-
-### Funcionalidade 2: Operações de Dados
-- **Descrição**: Funcionalidades para manipulação de dados (CRUD)
-- **Exemplo de uso**: Usuário clica em "Salvar" → sistema valida dados → salva no banco → exibe confirmação
-- **Componentes**: Formulários de entrada, Validadores, Conectores de banco
-- **Fluxo**: Entrada de dados → Validação → Persistência → Feedback
-
-## 2. ARQUITETURA FUNCIONAL
-- **Módulos**: Interface, Dados, Validação
-- **Fluxos**: Interface ↔ Validação ↔ Dados
-- **Integrações**: Banco de dados, Interface gráfica
-
-## 3. MAPEAMENTO PARA MODERNIZAÇÃO
-
-### Interface Principal → Spring Boot Controller
-**DELPHI**: Form principal com menus → métodos de inicialização → controle de acesso
-**JAVA**: @RestController com endpoints → métodos de inicialização → configuração de segurança
-
-### Operações de Dados → Spring Data JPA
-**DELPHI**: Procedures de banco → validações → feedback visual
-**JAVA**: Repository methods → Bean Validation → ResponseEntity com status
-
-Este mapeamento foi gerado com foco na compreensão funcional detalhada.
-"""
-        except Exception as e:
-            logger.error(f"Erro na geração com IA: {e}")
-            return f"Erro na geração de documentação: {str(e)}"
-    
-    def get_prompt_status(self) -> Dict[str, Any]:
-        """Retorna informações sobre o status dos prompts"""
-        return {
-            'specialized_prompts_available': PROMPTS_AVAILABLE,
-            'using_specialized_prompts': self.using_specialized_prompts,
-            'prompt_manager_type': type(self.prompt_manager).__name__,
-            'version': self.version
-        }
-    
-    def force_specialized_prompts(self) -> bool:
-        """Força o uso de prompts especializados se disponíveis"""
-        try:
-            from prompts.specialized_prompts import PromptManager as SpecializedPromptManager
-            self.prompt_manager = SpecializedPromptManager()
-            self.using_specialized_prompts = True
-            logger.info("✅ Forçado uso de prompts especializados")
-            return True
-        except ImportError:
-            logger.warning("⚠️ Não foi possível forçar prompts especializados")
-            return False

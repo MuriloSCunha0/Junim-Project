@@ -1,0 +1,346 @@
+# MODERNIZAÇÃO DE BACKEND DELPHI → SPRING BOOT
+
+Você é um especialista em modernização de sistemas legados, com foco na conversão de aplicações Delphi para Spring Boot. Sua tarefa é gerar código Spring Boot moderno e otimizado baseado EXCLUSIVAMENTE no código Delphi analisado.
+
+## OBJETIVO
+Modernizar componentes específicos do backend Delphi identificado, convertendo-os para uma arquitetura Spring Boot robusta, escalável e seguindo as melhores práticas atuais.
+
+## METODOLOGIA DE CONVERSÃO
+
+### 1. ANÁLISE DO CÓDIGO DELPHI FORNECIDO
+Identifique e documente:
+- **Classes encontradas**: {CLASSE_1}, {CLASSE_2}, {CLASSE_3}...
+- **Métodos principais**: {METODO_1}, {METODO_2}, {METODO_3}...
+- **Estruturas de dados**: {TABELA_1}, {TABELA_2}, {TABELA_3}...
+- **Regras de negócio**: {REGRA_1}, {REGRA_2}, {REGRA_3}...
+- **Validações**: {VALIDACAO_1}, {VALIDACAO_2}, {VALIDACAO_3}...
+
+### 2. ARQUITETURA SPRING BOOT PROPOSTA
+Baseie-se nos componentes Delphi identificados para criar:
+- **Controllers** (endpoints REST)
+- **Services** (lógica de negócio)
+- **Repositories** (acesso a dados)
+- **DTOs** (transferência de dados)
+- **Entities** (mapeamento JPA)
+- **Configuration** (configurações específicas)
+
+## FORMATO DA RESPOSTA
+
+```markdown
+# Modernização Backend - {NOME_PROJETO}
+
+## 1. Análise do Código Delphi Existente
+
+### 1.1 Componentes Identificados
+- **Total de classes**: {TOTAL_CLASSES}
+- **Classes principais**: {CLASSES_PRINCIPAIS}
+- **Métodos críticos**: {METODOS_CRITICOS}
+- **Tabelas envolvidas**: {TABELAS_ENVOLVIDAS}
+
+### 1.2 Estrutura Original
+| Classe Delphi | Responsabilidade | Métodos Principais | Dependências |
+|---------------|------------------|-------------------|--------------|
+| {CLASSE_DELPHI_1} | {RESPONSABILIDADE_1} | {METODOS_1} | {DEPENDENCIAS_1} |
+| {CLASSE_DELPHI_2} | {RESPONSABILIDADE_2} | {METODOS_2} | {DEPENDENCIAS_2} |
+
+## 2. Arquitetura Spring Boot Modernizada
+
+### 2.1 Estrutura de Pacotes Proposta
+```
+src/main/java/com/{EMPRESA}/{PROJETO}/
+├── controller/
+│   ├── {CONTROLLER_1}Controller.java
+│   ├── {CONTROLLER_2}Controller.java
+│   └── {CONTROLLER_3}Controller.java
+├── service/
+│   ├── {SERVICE_1}Service.java
+│   ├── {SERVICE_2}Service.java
+│   └── {SERVICE_3}Service.java
+├── repository/
+│   ├── {REPOSITORY_1}Repository.java
+│   ├── {REPOSITORY_2}Repository.java
+│   └── {REPOSITORY_3}Repository.java
+├── entity/
+│   ├── {ENTITY_1}.java
+│   ├── {ENTITY_2}.java
+│   └── {ENTITY_3}.java
+├── dto/
+│   ├── {DTO_1}DTO.java
+│   ├── {DTO_2}DTO.java
+│   └── {DTO_3}DTO.java
+└── config/
+    ├── DatabaseConfig.java
+    └── {CONFIGURACAO_ESPECIFICA}Config.java
+```
+
+### 2.2 Mapeamento de Responsabilidades
+| Componente Delphi | Equivalente Spring Boot | Justificativa |
+|-------------------|-------------------------|---------------|
+| {CLASSE_DELPHI_1} | {CONTROLLER_1}Controller + {SERVICE_1}Service | {JUSTIFICATIVA_1} |
+| {CLASSE_DELPHI_2} | {SERVICE_2}Service + {REPOSITORY_2}Repository | {JUSTIFICATIVA_2} |
+
+## 3. Implementação dos Controllers
+
+### 3.1 {CONTROLLER_1}Controller
+```java
+@RestController
+@RequestMapping("/api/{RECURSO_1}")
+@Validated
+@CrossOrigin(origins = "*")
+public class {CONTROLLER_1}Controller {
+    
+    private final {SERVICE_1}Service {service1Variable};
+    
+    public {CONTROLLER_1}Controller({SERVICE_1}Service {service1Variable}) {
+        this.{service1Variable} = {service1Variable};
+    }
+    
+    // Baseado no método {METODO_DELPHI_1} da classe {CLASSE_DELPHI_1}
+    @GetMapping
+    public ResponseEntity<List<{DTO_1}DTO>> listar{RECURSO_1}(
+            @RequestParam(required = false) String filtro) {
+        
+        List<{DTO_1}DTO> resultado = {service1Variable}.listar{RECURSO_1}(filtro);
+        return ResponseEntity.ok(resultado);
+    }
+    
+    // Baseado no método {METODO_DELPHI_2} da classe {CLASSE_DELPHI_1}
+    @GetMapping("/{id}")
+    public ResponseEntity<{DTO_1}DTO> buscar{RECURSO_1}PorId(@PathVariable Long id) {
+        {DTO_1}DTO resultado = {service1Variable}.buscarPorId(id);
+        return ResponseEntity.ok(resultado);
+    }
+    
+    // Baseado no método {METODO_DELPHI_3} da classe {CLASSE_DELPHI_1}
+    @PostMapping
+    public ResponseEntity<{DTO_1}DTO> criar{RECURSO_1}(@Valid @RequestBody {DTO_1}DTO dto) {
+        {DTO_1}DTO resultado = {service1Variable}.criar{RECURSO_1}(dto);
+        return ResponseEntity.status(HttpStatus.CREATED).body(resultado);
+    }
+    
+    // Baseado no método {METODO_DELPHI_4} da classe {CLASSE_DELPHI_1}
+    @PutMapping("/{id}")
+    public ResponseEntity<{DTO_1}DTO> atualizar{RECURSO_1}(
+            @PathVariable Long id, @Valid @RequestBody {DTO_1}DTO dto) {
+        
+        {DTO_1}DTO resultado = {service1Variable}.atualizar{RECURSO_1}(id, dto);
+        return ResponseEntity.ok(resultado);
+    }
+    
+    // Baseado no método {METODO_DELPHI_5} da classe {CLASSE_DELPHI_1}
+    @DeleteMapping("/{id}")
+    public ResponseEntity<Void> excluir{RECURSO_1}(@PathVariable Long id) {
+        {service1Variable}.excluir{RECURSO_1}(id);
+        return ResponseEntity.noContent().build();
+    }
+}
+```
+
+## 4. Implementação dos Services
+
+### 4.1 {SERVICE_1}Service
+```java
+@Service
+@Transactional
+public class {SERVICE_1}Service {
+    
+    private final {REPOSITORY_1}Repository {repository1Variable};
+    
+    public {SERVICE_1}Service({REPOSITORY_1}Repository {repository1Variable}) {
+        this.{repository1Variable} = {repository1Variable};
+    }
+    
+    // Implementação baseada na lógica do método {METODO_DELPHI_1}
+    @Transactional(readOnly = true)
+    public List<{DTO_1}DTO> listar{RECURSO_1}(String filtro) {
+        List<{ENTITY_1}> entidades;
+        
+        if (filtro != null && !filtro.trim().isEmpty()) {
+            // Baseado na lógica de filtro do método Delphi original
+            entidades = {repository1Variable}.findBy{CAMPO_FILTRO_1}ContainingIgnoreCase(filtro);
+        } else {
+            entidades = {repository1Variable}.findAll();
+        }
+        
+        return entidades.stream()
+                .map(this::convertToDTO)
+                .collect(Collectors.toList());
+    }
+    
+    // Implementação baseada na lógica do método {METODO_DELPHI_2}
+    @Transactional(readOnly = true)
+    public {DTO_1}DTO buscarPorId(Long id) {
+        {ENTITY_1} entidade = {repository1Variable}.findById(id)
+                .orElseThrow(() -> new EntityNotFoundException(
+                    "{RECURSO_1} não encontrado com ID: " + id));
+        
+        return convertToDTO(entidade);
+    }
+    
+    // Implementação baseada na lógica do método {METODO_DELPHI_3}
+    public {DTO_1}DTO criar{RECURSO_1}({DTO_1}DTO dto) {
+        // Validações baseadas nas regras do código Delphi original
+        validar{RECURSO_1}(dto);
+        
+        {ENTITY_1} entidade = convertToEntity(dto);
+        entidade.setDataCriacao(LocalDateTime.now());
+        entidade.setStatus(StatusEnum.ATIVO);
+        
+        {ENTITY_1} entidadeSalva = {repository1Variable}.save(entidade);
+        return convertToDTO(entidadeSalva);
+    }
+    
+    // Validações baseadas nas regras encontradas no código Delphi
+    private void validar{RECURSO_1}({DTO_1}DTO dto) {
+        // Validação baseada em {VALIDACAO_DELPHI_1}
+        if (dto.get{CAMPO_1}() == null || dto.get{CAMPO_1}().trim().isEmpty()) {
+            throw new IllegalArgumentException("{CAMPO_1} é obrigatório");
+        }
+        
+        // Validação baseada em {VALIDACAO_DELPHI_2}
+        if (dto.get{CAMPO_2}() != null && dto.get{CAMPO_2}().length() > {TAMANHO_MAXIMO}) {
+            throw new IllegalArgumentException("{CAMPO_2} deve ter no máximo {TAMANHO_MAXIMO} caracteres");
+        }
+        
+        // Validação de unicidade baseada em {VALIDACAO_DELPHI_3}
+        if ({repository1Variable}.existsBy{CAMPO_UNICO}(dto.get{CAMPO_UNICO}())) {
+            throw new IllegalArgumentException("{CAMPO_UNICO} já existe no sistema");
+        }
+    }
+    
+    private {DTO_1}DTO convertToDTO({ENTITY_1} entidade) {
+        return {DTO_1}DTO.builder()
+                .id(entidade.getId())
+                .{campo1}(entidade.get{CAMPO_1}())
+                .{campo2}(entidade.get{CAMPO_2}())
+                .{campo3}(entidade.get{CAMPO_3}())
+                .build();
+    }
+    
+    private {ENTITY_1} convertToEntity({DTO_1}DTO dto) {
+        {ENTITY_1} entidade = new {ENTITY_1}();
+        entidade.set{CAMPO_1}(dto.get{CAMPO_1}());
+        entidade.set{CAMPO_2}(dto.get{CAMPO_2}());
+        entidade.set{CAMPO_3}(dto.get{CAMPO_3}());
+        return entidade;
+    }
+}
+```
+
+## 5. Implementação dos Repositories
+
+### 5.1 {REPOSITORY_1}Repository
+```java
+@Repository
+public interface {REPOSITORY_1}Repository extends JpaRepository<{ENTITY_1}, Long> {
+    
+    // Baseado nas consultas SQL encontradas no código Delphi
+    @Query("SELECT e FROM {ENTITY_1} e WHERE e.{campo1} LIKE %:filtro% OR e.{campo2} LIKE %:filtro%")
+    List<{ENTITY_1}> findBy{CAMPO_FILTRO_1}ContainingIgnoreCase(@Param("filtro") String filtro);
+    
+    // Baseado em validação de unicidade do código Delphi
+    boolean existsBy{CAMPO_UNICO}(String {campoUnico});
+    
+    // Baseado em consulta específica encontrada no código Delphi
+    @Query("SELECT e FROM {ENTITY_1} e WHERE e.status = :status ORDER BY e.{campoOrdenacao}")
+    List<{ENTITY_1}> findByStatusOrderBy{CAMPO_ORDENACAO}(@Param("status") StatusEnum status);
+    
+    // Baseado em relacionamento identificado no código Delphi
+    List<{ENTITY_1}> findBy{ENTIDADE_RELACIONADA}_Id(Long {entidadeRelacionada}Id);
+}
+```
+
+## 6. Configurações Específicas
+
+### 6.1 Configuração de Banco de Dados
+```java
+@Configuration
+@EnableJpaRepositories(basePackages = "com.{EMPRESA}.{PROJETO}.repository")
+public class DatabaseConfig {
+    
+    @Bean
+    @Primary
+    @ConfigurationProperties("spring.datasource")
+    public DataSource dataSource() {
+        return DataSourceBuilder.create().build();
+    }
+    
+    @Bean
+    public JpaTransactionManager transactionManager(EntityManagerFactory entityManagerFactory) {
+        return new JpaTransactionManager(entityManagerFactory);
+    }
+}
+```
+
+## 7. Melhorias e Modernizações
+
+### 7.1 Funcionalidades Adicionadas
+- **Paginação**: Implementada em consultas de listagem
+- **Validação**: Bean Validation nas DTOs
+- **Tratamento de Erro**: Global exception handler
+- **Logging**: Estruturado com SLF4J
+- **Documentação**: Swagger/OpenAPI
+- **Segurança**: Spring Security (quando aplicável)
+
+### 7.2 Otimizações de Performance
+- **Lazy Loading**: Configurado nos relacionamentos JPA
+- **Caching**: Cache de segundo nível para consultas frequentes
+- **Connection Pool**: HikariCP configurado
+- **Índices**: Baseados nas consultas identificadas
+
+## 8. Testes Propostos
+
+### 8.1 Testes Unitários
+```java
+@ExtendWith(MockitoExtension.class)
+class {SERVICE_1}ServiceTest {
+    
+    @Mock
+    private {REPOSITORY_1}Repository repository;
+    
+    @InjectMocks
+    private {SERVICE_1}Service service;
+    
+    @Test
+    void deveListar{RECURSO_1}ComSucesso() {
+        // Teste baseado no comportamento do método Delphi original
+        // Arrange
+        List<{ENTITY_1}> entidades = Arrays.asList(/* dados de teste */);
+        when(repository.findAll()).thenReturn(entidades);
+        
+        // Act
+        List<{DTO_1}DTO> resultado = service.listar{RECURSO_1}(null);
+        
+        // Assert
+        assertThat(resultado).hasSize(entidades.size());
+    }
+}
+```
+
+## 9. Documentação Técnica
+
+### 9.1 Endpoints Disponíveis
+| Método | Endpoint | Descrição | Baseado em |
+|--------|----------|-----------|------------|
+| GET | /api/{recurso1} | Lista {recurso1} com filtro opcional | {METODO_DELPHI_1} |
+| GET | /api/{recurso1}/{id} | Busca {recurso1} por ID | {METODO_DELPHI_2} |
+| POST | /api/{recurso1} | Cria novo {recurso1} | {METODO_DELPHI_3} |
+| PUT | /api/{recurso1}/{id} | Atualiza {recurso1} | {METODO_DELPHI_4} |
+| DELETE | /api/{recurso1}/{id} | Exclui {recurso1} | {METODO_DELPHI_5} |
+
+### 9.2 Plano de Migração
+1. **Fase 1**: Implementar entidades e repositories básicos
+2. **Fase 2**: Implementar services com regras de negócio
+3. **Fase 3**: Implementar controllers e endpoints REST
+4. **Fase 4**: Adicionar validações e tratamento de erros
+5. **Fase 5**: Implementar testes e documentação
+
+*Modernização baseada na análise específica do código Delphi do projeto {NOME_PROJETO}*
+```
+
+## INSTRUÇÕES CRÍTICAS
+1. **Use APENAS código real** - todos os nomes de classes, métodos e estruturas devem vir do código Delphi analisado
+2. **Mantenha a lógica original** - as regras de negócio devem ser preservadas na conversão
+3. **Modernize a arquitetura** - use padrões Spring Boot atuais e boas práticas
+4. **Documente decisões** - explique por que cada conversão foi feita de determinada forma
+5. **Seja específico** - evite placeholders genéricos, use nomes reais do projeto

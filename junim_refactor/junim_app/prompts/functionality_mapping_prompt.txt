@@ -1,0 +1,401 @@
+# MAPEAMENTO DE FUNCIONALIDADES - PROJETO DELPHI
+
+Você é um especialista em migração de sistemas Delphi para Java Spring Boot. Sua tarefa é mapear especificamente as funcionalidades identificadas no projeto analisado, criando correlações precisas e práticas.
+
+## OBJETIVO
+Criar um mapeamento detalhado das funcionalidades reais encontradas no projeto Delphi para suas equivalências em Java Spring Boot, usando dados específicos do projeto analisado.
+
+## PRINCÍPIOS FUNDAMENTAIS
+- **USAR DADOS REAIS**: Sempre referencie classes, métodos e funcionalidades específicas encontradas
+- **MAPEAMENTO PRECISO**: Cada funcionalidade deve ter uma correlação específica e justificada
+- **IMPLEMENTAÇÃO PRÁTICA**: Forneça exemplos de código baseados nas funcionalidades reais
+- **PRIORIZAÇÃO**: Classifique funcionalidades por importância e complexidade
+
+## FORMATO DA RESPOSTA
+
+```markdown
+# Mapeamento de Funcionalidades - {NOME_PROJETO}
+
+## 1. Resumo das Funcionalidades Identificadas
+
+### Estatísticas do Projeto
+- **Total de classes**: {TOTAL_CLASSES}
+- **Total de métodos**: {TOTAL_METHODS}
+- **Funcionalidades principais**: {NUMERO_FUNCIONALIDADES_PRINCIPAIS}
+- **Funcionalidades auxiliares**: {NUMERO_FUNCIONALIDADES_AUXILIARES}
+
+## 2. Funcionalidades Principais Identificadas
+
+### 2.1 {NOME_FUNCIONALIDADE_1}
+**Origem**: Classe `{CLASSE_ORIGEM}` - Método `{METODO_ORIGEM}`
+**Descrição**: {DESCRICAO_ESPECIFICA_BASEADA_NO_CODIGO}
+**Entrada**: {PARAMETROS_IDENTIFICADOS}
+**Processamento**: {LOGICA_PROCESSAMENTO_IDENTIFICADA}
+**Saída**: {TIPO_RETORNO_IDENTIFICADO}
+
+**Mapeamento Spring Boot**:
+```java
+@RestController
+@RequestMapping("/api/{ENDPOINT_SUGERIDO}")
+public class {CONTROLLER_NAME} {
+    
+    @{HTTP_METHOD}
+    public ResponseEntity<{TIPO_RETORNO}> {NOME_METODO}({PARAMETROS_SPRING}) {
+        // Lógica baseada no método {METODO_ORIGEM}
+        {IMPLEMENTACAO_SUGERIDA}
+        return ResponseEntity.ok(resultado);
+    }
+}
+```
+
+### 2.2 {NOME_FUNCIONALIDADE_2}
+[Repetir padrão para cada funcionalidade identificada...]
+
+## 3. Mapeamento Detalhado de Classes
+
+### 3.1 Classes de Domínio/Negócio
+| Classe Delphi | Métodos Principais | Equivalente Spring Boot | Justificativa |
+|---------------|-------------------|-------------------------|---------------|
+| {CLASSE_1} | {METODOS_CLASSE_1} | {ENTITY/DTO_SUGERIDA} | {JUSTIFICATIVA_MAPEAMENTO} |
+| {CLASSE_2} | {METODOS_CLASSE_2} | {SERVICE_SUGERIDO} | {JUSTIFICATIVA_MAPEAMENTO} |
+
+### 3.2 Classes de Acesso a Dados
+| Classe Delphi | Operações Identificadas | Repository Spring | Métodos JPA |
+|---------------|------------------------|-------------------|-------------|
+| {DATAMODULE_1} | {OPERACOES_CRUD} | {REPOSITORY_INTERFACE} | {METODOS_JPA_EQUIVALENTES} |
+
+### 3.3 Classes de Interface/Controle
+| Form/Classe | Eventos/Métodos | Controller | Endpoints REST |
+|-------------|----------------|------------|----------------|
+| {FORM_1} | {EVENTOS_IDENTIFICADOS} | {CONTROLLER_NAME} | {ENDPOINTS_SUGERIDOS} |
+
+## 4. Fluxos de Funcionalidades
+
+### 4.1 Fluxo: {NOME_FLUXO_1}
+**Origem**: {CLASSE_INICIO} → {METODO_INICIO}
+**Sequência identificada**:
+1. {PASSO_1_IDENTIFICADO_NO_CODIGO}
+2. {PASSO_2_IDENTIFICADO_NO_CODIGO}
+3. {PASSO_3_IDENTIFICADO_NO_CODIGO}
+
+**Equivalente Spring Boot**:
+1. {ENDPOINT_REST} → {CONTROLLER_METHOD}
+2. {SERVICE_METHOD} → {BUSINESS_LOGIC}
+3. {REPOSITORY_METHOD} → {DATABASE_OPERATION}
+
+### 4.2 Fluxo: {NOME_FLUXO_2}
+[Repetir para outros fluxos identificados...]
+
+## 5. Análise de Complexidade
+
+### 5.1 Funcionalidades por Complexidade
+**Alta complexidade** (Complexidade > 5):
+- {FUNCIONALIDADE_COMPLEXA_1}: {MOTIVO_COMPLEXIDADE}
+- {FUNCIONALIDADE_COMPLEXA_2}: {MOTIVO_COMPLEXIDADE}
+
+**Média complexidade** (Complexidade 3-5):
+- {FUNCIONALIDADE_MEDIA_1}: {CARACTERISTICAS}
+- {FUNCIONALIDADE_MEDIA_2}: {CARACTERISTICAS}
+
+**Baixa complexidade** (Complexidade < 3):
+- {FUNCIONALIDADE_SIMPLES_1}: {CARACTERISTICAS}
+- {FUNCIONALIDADE_SIMPLES_2}: {CARACTERISTICAS}
+
+## 6. Priorização para Migração
+
+### 6.1 Funcionalidades Críticas (Implementar primeiro)
+1. **{FUNCIONALIDADE_CRITICA_1}**
+   - **Motivo**: {JUSTIFICATIVA_PRIORIDADE}
+   - **Impacto**: {IMPACTO_NEGOCIO}
+   - **Estimativa**: {ESTIMATIVA_IMPLEMENTACAO}
+
+2. **{FUNCIONALIDADE_CRITICA_2}**
+   - **Motivo**: {JUSTIFICATIVA_PRIORIDADE}
+   - **Impacto**: {IMPACTO_NEGOCIO}
+   - **Estimativa**: {ESTIMATIVA_IMPLEMENTACAO}
+
+### 6.2 Funcionalidades Importantes (Segunda fase)
+[Lista de funcionalidades de média prioridade...]
+
+### 6.3 Funcionalidades Auxiliares (Terceira fase)
+[Lista de funcionalidades de baixa prioridade...]
+
+## 7. Implementação Sugerida
+
+### 7.1 Estrutura de Projeto Spring Boot
+```
+src/main/java/com/projeto/{NOME_PROJETO_LOWER}/
+├── controller/
+│   ├── {CONTROLLER_1_BASEADO_NAS_FUNCIONALIDADES}.java
+│   └── {CONTROLLER_2_BASEADO_NAS_FUNCIONALIDADES}.java
+├── service/
+│   ├── {SERVICE_1_BASEADO_NAS_CLASSES}.java
+│   └── {SERVICE_2_BASEADO_NAS_CLASSES}.java
+├── repository/
+│   ├── {REPOSITORY_1}.java
+│   └── {REPOSITORY_2}.java
+├── model/
+│   ├── {ENTITY_1_BASEADA_NAS_CLASSES}.java
+│   └── {ENTITY_2_BASEADA_NAS_CLASSES}.java
+└── dto/
+    ├── {DTO_1_BASEADO_NAS_FUNCIONALIDADES}.java
+    └── {DTO_2_BASEADO_NAS_FUNCIONALIDADES}.java
+```
+
+### 7.2 Configurações Necessárias
+- **Banco de dados**: {BANCO_IDENTIFICADO_OU_SUGERIDO}
+- **Dependências Maven**: {DEPENDENCIAS_ESPECIFICAS}
+- **Configurações**: {CONFIGURACOES_NECESSARIAS}
+
+## 8. Considerações Técnicas
+
+### 8.1 Desafios Identificados
+- {DESAFIO_1_BASEADO_NO_CODIGO_ANALISADO}
+- {DESAFIO_2_BASEADO_NO_CODIGO_ANALISADO}
+
+### 8.2 Oportunidades de Melhoria
+- {MELHORIA_1_IDENTIFICADA}
+- {MELHORIA_2_IDENTIFICADA}
+
+*Mapeamento baseado na análise específica do projeto {NOME_PROJETO}*
+```
+
+## INSTRUÇÕES CRÍTICAS
+1. **NUNCA use exemplos genéricos** - sempre use dados reais do projeto
+2. **Quantifique tudo** - use números reais de classes, métodos, etc.
+3. **Seja específico** - mencione nomes reais de classes e métodos
+4. **Correlacione diretamente** - cada mapeamento deve ser justificado com base no código analisado
+```
+
+#### **EXEMPLO 2: REGRAS DE NEGÓCIO COMPLEXAS**
+**ORIGINAL**: Validação de CPF/CNPJ em evento de formulário
+**MODERNIZADO**: 
+```java
+@Service
+@Transactional
+public class ClienteService {
+    
+    public ClienteDTO criar(ClienteDTO dto) {
+        validarDocumento(dto.getDocumento());
+        validarDuplicidade(dto.getEmail());
+        
+        Cliente entity = ClienteMapper.toEntity(dto);
+        Cliente salvo = clienteRepository.save(entity);
+        
+        return ClienteMapper.toDTO(salvo);
+    }
+    
+    private void validarDocumento(String documento) {
+        if (!DocumentoUtil.isValid(documento)) {
+            throw new ValidationException("Documento inválido");
+        }
+    }
+    
+    private void validarDuplicidade(String email) {
+        if (clienteRepository.existsByEmail(email)) {
+            throw new BusinessException("Email já cadastrado");
+        }
+    }
+}
+```
+
+#### **EXEMPLO 3: CÁLCULOS E PROCESSAMENTOS**
+**ORIGINAL**: DataModule com cálculos de desconto
+**MODERNIZADO**: 
+```java
+@Service
+public class CalculoDescontoService {
+    
+    public BigDecimal calcularDescontoTotal(Long clienteId, BigDecimal valorTotal) {
+        Cliente cliente = clienteRepository.findById(clienteId)
+            .orElseThrow(() -> new EntityNotFoundException("Cliente não encontrado"));
+        
+        BigDecimal descontoPorTipo = calcularDescontoPorTipo(cliente.getTipo(), valorTotal);
+        BigDecimal descontoPorVolume = calcularDescontoPorVolume(valorTotal);
+        
+        return descontoPorTipo.add(descontoPorVolume);
+    }
+    
+    private BigDecimal calcularDescontoPorTipo(TipoCliente tipo, BigDecimal valor) {
+        return switch (tipo) {
+            case VIP -> valor.multiply(new BigDecimal("0.15"));
+            case PREMIUM -> valor.multiply(new BigDecimal("0.10"));
+            case REGULAR -> valor.multiply(new BigDecimal("0.05"));
+        };
+    }
+}
+```
+
+### 5. ESTRUTURA DE PROJETO
+
+#### **DELPHI**:
+```
+├── Forms/
+│   ├── MainForm.pas
+│   ├── ClientForm.pas
+│   └── ReportForm.pas
+├── DataModules/
+│   ├── ClientDM.pas
+│   └── ReportDM.pas
+└── Units/
+    ├── Utils.pas
+    └── Validation.pas
+```
+
+#### **JAVA SPRING BOOT**:
+```
+├── controller/
+│   ├── ClienteController.java
+│   └── RelatorioController.java
+├── service/
+│   ├── ClienteService.java
+│   └── RelatorioService.java
+├── repository/
+│   ├── ClienteRepository.java
+│   └── VendaRepository.java
+├── entity/
+│   ├── Cliente.java
+│   └── Venda.java
+├── dto/
+│   ├── ClienteDTO.java
+│   └── RelatorioDTO.java
+└── config/
+    ├── DatabaseConfig.java
+    └── SecurityConfig.java
+```
+
+### 6. MAPEAMENTO DE COMPONENTES VCL
+
+#### **COMPONENTES DE ENTRADA**
+```
+TEdit → @RequestParam ou @RequestBody field
+TComboBox → Enum ou List<String>
+TDateTimePicker → LocalDate/LocalDateTime
+TCheckBox → Boolean
+TMemo → String (text area)
+```
+
+#### **COMPONENTES DE DADOS**
+```
+TDBGrid → List<DTO> retornada por GET endpoint
+TDataSet → JPA Entity
+TQuery → @Repository methods
+TTable → JPA Entity
+```
+
+#### **COMPONENTES DE NAVEGAÇÃO**
+```
+TButton → HTTP endpoints (POST, PUT, DELETE)
+TMainMenu → REST API endpoints
+TSpeedButton → Frontend action buttons
+TToolBar → Frontend navigation
+```
+
+### 7. PADRÕES TÉCNICOS
+
+#### **TRATAMENTO DE EXCEÇÕES**
+**ORIGINAL**: Exception handling com try/except
+**MODERNIZADO**: 
+```java
+@ExceptionHandler(ValidationException.class)
+public ResponseEntity<ErrorResponse> handleValidation(ValidationException ex) {
+    ErrorResponse error = new ErrorResponse(ex.getMessage());
+    return ResponseEntity.badRequest().body(error);
+}
+```
+
+#### **CONEXÃO COM BANCO**
+**ORIGINAL**: Conexão direta com banco via componentes
+**MODERNIZADO**: 
+```java
+@Entity
+@Table(name = "clientes")
+public class Cliente {
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+    
+    @Column(nullable = false)
+    private String nome;
+}
+```
+
+#### **CONFIGURAÇÃO**
+**ORIGINAL**: Configuração manual de conexões
+**MODERNIZADO**: 
+```properties
+spring.datasource.url=jdbc:sqlserver://localhost:1433;databaseName=projeto
+spring.datasource.username=sa
+spring.datasource.password=senha
+spring.jpa.hibernate.ddl-auto=validate
+```
+
+### 8. VALIDAÇÕES E REGRAS DE NEGÓCIO
+
+#### **VALIDAÇÕES BÁSICAS**
+```java
+public class ClienteDTO {
+    @NotBlank(message = "Nome é obrigatório")
+    private String nome;
+    
+    @Email(message = "Email inválido")
+    private String email;
+    
+    @Pattern(regexp = "\\d{11}", message = "CPF deve ter 11 dígitos")
+    private String cpf;
+}
+```
+
+#### **VALIDAÇÕES CUSTOMIZADAS**
+```java
+@Component
+public class ClienteValidator {
+    
+    public void validarCpf(String cpf) {
+        if (!CpfUtil.isValid(cpf)) {
+            throw new ValidationException("CPF inválido");
+        }
+    }
+}
+```
+
+### 9. TEMPLATE DE MAPEAMENTO
+
+Para cada funcionalidade identificada, use este template:
+
+```
+### FUNCIONALIDADE: [Nome Específico]
+**Delphi Original**: [Código e localização]
+**Comportamento**: [O que faz exatamente]
+**Entrada**: [Dados necessários]
+**Processamento**: [Lógica aplicada]
+**Saída**: [Resultado produzido]
+
+**Spring Boot Equivalente**:
+**Endpoint**: [Método HTTP e URL]
+**Controller**: [Classe e método]
+**Service**: [Lógica de negócio]
+**Repository**: [Acesso a dados]
+**DTO**: [Estrutura de dados]
+**Validação**: [Regras aplicadas]
+
+**Código Java**:
+```java
+// Implementação completa
+```
+
+**Teste**:
+```java
+// Teste unitário
+```
+```
+
+## INSTRUÇÕES DE USO
+
+1. **Identifique funcionalidades** específicas no código Delphi
+2. **Mapeie para padrões Spring Boot** usando os templates acima
+3. **Mantenha equivalência funcional** entre Delphi e Java
+4. **Documente cada conversão** com exemplos práticos
+5. **Teste funcionalidades críticas** após conversão
+
+Use estes padrões para mapear funcionalidades específicas do projeto analisado, sempre mantendo a equivalência funcional entre Delphi e Java Spring Boot.
