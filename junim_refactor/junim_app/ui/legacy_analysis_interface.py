@@ -35,6 +35,16 @@ except ImportError as e:
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+def _sanitize_class_name(name: str) -> str:
+    """Sanitiza nome de classe para Java"""
+    # Remove caracteres especiais e espacos
+    sanitized = re.sub(r'[^a-zA-Z0-9_]', '', name)
+    # Garante que começa com letra maiúscula
+    if sanitized and not sanitized[0].isupper():
+        sanitized = sanitized[0].upper() + sanitized[1:]
+    # Se vazio, usa padrão
+    return sanitized if sanitized else 'GeneratedClass'
+
 def _check_ollama_available() -> bool:
     """Verifica se o Ollama está disponível"""
     try:
@@ -43,6 +53,200 @@ def _check_ollama_available() -> bool:
         return response.status_code == 200
     except:
         return False
+
+def _create_modernized_project_structure(temp_dir: str, config: Dict[str, Any]) -> Dict[str, str]:
+    """Cria estrutura básica do projeto Java Spring Boot modernizado"""
+    try:
+        project_name = config.get('project_name', 'ModernizedProject')
+        package_name = config.get('package_name', 'com.modernized.project')
+        
+        # Diretórios principais
+        src_main_java = os.path.join(temp_dir, "src", "main", "java", *package_name.split('.'))
+        src_main_resources = os.path.join(temp_dir, "src", "main", "resources")
+        src_test_java = os.path.join(temp_dir, "src", "test", "java", *package_name.split('.'))
+        
+        # Cria diretórios
+        os.makedirs(src_main_java, exist_ok=True)
+        os.makedirs(src_main_resources, exist_ok=True)
+        os.makedirs(src_test_java, exist_ok=True)
+        
+        project_files = {}
+        
+        # 1. Application.java (Main Spring Boot)
+        app_content = f"""package {package_name};
+
+import org.springframework.boot.SpringApplication;
+import org.springframework.boot.autoconfigure.SpringBootApplication;
+
+@SpringBootApplication
+public class {project_name}Application {{
+    public static void main(String[] args) {{
+        SpringApplication.run({project_name}Application.class, args);
+    }}
+}}"""
+        
+        app_file = os.path.join(src_main_java, f"{project_name}Application.java")
+        with open(app_file, 'w', encoding='utf-8') as f:
+            f.write(app_content)
+        project_files[f"src/main/java/{package_name.replace('.', '/')}/{project_name}Application.java"] = app_content
+        
+        # 2. Controller básico
+        controller_content = f"""package {package_name}.controller;
+
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.RestController;
+
+@RestController
+public class MainController {{
+    
+    @GetMapping("/")
+    public String home() {{
+        return "Aplicação {project_name} modernizada com sucesso!";
+    }}
+    
+    @GetMapping("/health")
+    public String health() {{
+        return "OK";
+    }}
+}}"""
+        
+        controller_dir = os.path.join(src_main_java, "controller")
+        os.makedirs(controller_dir, exist_ok=True)
+        controller_file = os.path.join(controller_dir, "MainController.java")
+        with open(controller_file, 'w', encoding='utf-8') as f:
+            f.write(controller_content)
+        project_files[f"src/main/java/{package_name.replace('.', '/')}/controller/MainController.java"] = controller_content
+        
+        # 3. application.properties
+        props_content = f"""# Configuração da aplicação {project_name}
+server.port=8080
+spring.application.name={project_name.lower()}
+
+# Database (H2 para desenvolvimento)
+spring.datasource.url=jdbc:h2:mem:testdb
+spring.datasource.driverClassName=org.h2.Driver
+spring.datasource.username=sa
+spring.datasource.password=
+spring.h2.console.enabled=true
+
+# JPA
+spring.jpa.database-platform=org.hibernate.dialect.H2Dialect
+spring.jpa.hibernate.ddl-auto=create-drop
+spring.jpa.show-sql=true
+"""
+        
+        props_file = os.path.join(src_main_resources, "application.properties")
+        with open(props_file, 'w', encoding='utf-8') as f:
+            f.write(props_content)
+        project_files["src/main/resources/application.properties"] = props_content
+        
+        # 4. pom.xml
+        pom_content = f"""<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 
+         http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+    
+    <groupId>{package_name}</groupId>
+    <artifactId>{project_name.lower()}</artifactId>
+    <version>1.0.0</version>
+    <packaging>jar</packaging>
+    
+    <name>{project_name}</name>
+    <description>Projeto modernizado de Delphi para Java Spring Boot</description>
+    
+    <parent>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-parent</artifactId>
+        <version>3.2.0</version>
+        <relativePath/>
+    </parent>
+    
+    <properties>
+        <java.version>17</java.version>
+    </properties>
+    
+    <dependencies>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-web</artifactId>
+        </dependency>
+        
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-data-jpa</artifactId>
+        </dependency>
+        
+        <dependency>
+            <groupId>com.h2database</groupId>
+            <artifactId>h2</artifactId>
+            <scope>runtime</scope>
+        </dependency>
+        
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+    
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-maven-plugin</artifactId>
+            </plugin>
+        </plugins>
+    </build>
+</project>"""
+        
+        pom_file = os.path.join(temp_dir, "pom.xml")
+        with open(pom_file, 'w', encoding='utf-8') as f:
+            f.write(pom_content)
+        project_files["pom.xml"] = pom_content
+        
+        # 5. README.md
+        readme_content = f"""# {project_name}
+
+Projeto modernizado de Delphi para Java Spring Boot.
+
+## Como executar
+
+1. Certifique-se de ter Java 17+ instalado
+2. Execute: `mvn spring-boot:run`
+3. Acesse: http://localhost:8080
+
+## Estrutura
+
+- `src/main/java` - Código fonte Java
+- `src/main/resources` - Recursos e configurações
+- `src/test/java` - Testes unitários
+
+## Tecnologias
+
+- Java 17
+- Spring Boot 3.2.0
+- Maven
+- H2 Database (desenvolvimento)
+
+---
+*Gerado automaticamente pelo Sistema JUNIM*
+"""
+        
+        readme_file = os.path.join(temp_dir, "README.md")
+        with open(readme_file, 'w', encoding='utf-8') as f:
+            f.write(readme_content)
+        project_files["README.md"] = readme_content
+        
+        logger.info(f"✅ Estrutura do projeto criada em: {temp_dir}")
+        logger.info(f"📁 Arquivos criados: {len(project_files)}")
+        
+        return project_files
+        
+    except Exception as e:
+        logger.error(f"❌ Erro ao criar estrutura do projeto: {str(e)}")
+        return {}
 
 
 def render_legacy_analysis_interface():
@@ -119,14 +323,21 @@ def render_legacy_analysis_interface():
                 st.info(f"Modelo: {config.get('groq_model', 'llama3-70b-8192')}")
             elif ollama_available:
                 st.success("✅ **Ollama Disponível**")
-                ollama_model = config.get('ollama_model', 'deepseek-r1:14b')
+                ollama_model = config.get('ollama_model', 'codellama:7b')
                 if 'deepseek-r1:14b' in ollama_model:
                     st.info("🚀 **DeepSeek-R1:14b** - Modelo de alta performance")
                     st.success("🎯 **Recomendado para análises complexas**")
                 elif 'deepseek-r1' in ollama_model:
                     st.info(f"🤖 **{ollama_model}** - Modelo DeepSeek-R1")
+                elif 'codellama' in ollama_model:
+                    st.info(f"💻 **{ollama_model}** - Modelo CodeLlama")
+                    st.success("🎯 **Especializado em análise de código**")
+                elif 'llama' in ollama_model:
+                    st.info(f"🦙 **{ollama_model}** - Modelo Llama")
+                    st.success("🎯 **Modelo versátil para análise**")
                 else:
-                    st.info(f"Modelo: {ollama_model}")
+                    st.info(f"🤖 **Modelo:** {ollama_model}")
+                    st.success("✅ **Configurado e funcionando**")
             else:
                 st.error("❌ **Nenhuma API Configurada**")
                 st.warning("Configure Groq API key ou inicie o Ollama")
@@ -157,8 +368,9 @@ def render_legacy_analysis_interface():
             st.write(f"• Analisar lógica de negócio: {config.get('analyze_business_logic', True)}")
             st.write(f"• Gerar correlações: {config.get('generate_correlations', True)}")
             
-            # Destaque para DeepSeek-R1
-            if config.get('ollama_model') == 'deepseek-r1:14b':
+            # Destaque para modelos específicos
+            current_model = config.get('ollama_model', 'codellama:7b')
+            if 'deepseek-r1:14b' in current_model:
                 st.markdown("---")
                 st.write("🚀 **DeepSeek-R1:14b Ativo**")
                 st.success("✨ **Benefícios:**")
@@ -166,6 +378,22 @@ def render_legacy_analysis_interface():
                 st.write("• Melhor compreensão de lógica de negócio")
                 st.write("• Geração de código mais precisa")
                 st.write("• Suporte a projetos mais complexos")
+            elif 'codellama' in current_model:
+                st.markdown("---")
+                st.write(f"💻 **{current_model} Ativo**")
+                st.success("✨ **Benefícios:**")
+                st.write("• Especializado em análise de código")
+                st.write("• Compreensão avançada de linguagens")
+                st.write("• Geração de código otimizada")
+                st.write("• Foco em desenvolvimento e refatoração")
+            elif 'llama' in current_model:
+                st.markdown("---")
+                st.write(f"🦙 **{current_model} Ativo**")
+                st.success("✨ **Benefícios:**")
+                st.write("• Modelo versátil e robusto")
+                st.write("• Boa compreensão contextual")
+                st.write("• Análise eficiente de projetos")
+                st.write("• Equilibrio entre velocidade e qualidade")
             
             if st.button("🔄 Recarregar Configurações"):
                 try:
@@ -418,33 +646,58 @@ def start_analysis(project_path: str, project_name: str = None, include_comments
                     st.session_state.doc_generator = doc_generator
                     logger.info(f"✅ DocumentationGenerator configurado com LLM: {llm_service is not None}")
                 
-                # Verifica se o LLM service está disponível
-                if not doc_generator.llm_service:
-                    logger.warning("⚠️ LLM service não disponível, usando fallback")
-                    # Tenta pegar do analyzer novamente
-                    if hasattr(st.session_state.analyzer, 'llm_service'):
-                        doc_generator.llm_service = st.session_state.analyzer.llm_service
-                        logger.info("✅ LLM service recuperado do analyzer")
+                # CORREÇÃO: Verifica e configura LLM service de forma robusta (sem warnings desnecessários)
+                llm_service_configured = False
+                
+                # Garante que o LLM service está configurado no DocumentationGenerator
+                if hasattr(doc_generator, 'llm_service') and doc_generator.llm_service is not None:
+                    llm_service_configured = True
+                    logger.info("✅ LLM service já configurado no DocumentationGenerator")
+                elif hasattr(st.session_state.analyzer, 'llm_service') and st.session_state.analyzer.llm_service:
+                    # Recupera do analyzer
+                    doc_generator.llm_service = st.session_state.analyzer.llm_service
+                    llm_service_configured = True
+                    logger.info("✅ LLM service transferido do analyzer para DocumentationGenerator")
+                
+                # Verifica capacidades reais do LLM (Ollama/Groq)
+                llm_operational = False
+                if llm_service_configured and doc_generator.llm_service:
+                    ollama_client = getattr(doc_generator.llm_service, 'ollama_client', None)
+                    groq_client = getattr(doc_generator.llm_service, 'groq_client', None)
+                    groq_key = doc_generator.llm_service.config.get('groq_api_key', '') if hasattr(doc_generator.llm_service, 'config') else ''
+                    
+                    if ollama_client or (groq_client and groq_key):
+                        llm_operational = True
+                        logger.info(f"✅ LLM operacional - Ollama: {'✓' if ollama_client else '✗'}, Groq: {'✓' if (groq_client and groq_key) else '✗'}")
+                    else:
+                        logger.info("🔧 LLM configurado mas sem clientes ativos - usará análise estrutural")
+                else:
+                    logger.info("🔧 Sistema funcionando com análise estrutural baseada no projeto real")
+                
+                # RESULTADO: Sistema sempre funciona, seja com LLM externo ou análise offline
+                generation_mode = "LLM" if llm_operational else "Análise Estrutural"
+                logger.info(f"🎯 Modo de geração: {generation_mode}")
                 
                 # Atualiza prompt manager se necessário
                 if hasattr(st.session_state.analyzer, 'prompt_manager'):
                     doc_generator.prompt_manager = st.session_state.analyzer.prompt_manager
                 
-                # Gera documentação específica - agora retorna conteúdo diretamente
+                # CORREÇÃO: Gera documentação específica usando os tipos corretos
                 generated_docs_content = doc_generator.generate_specific_documentation(
                     analysis_results=analysis_results, 
                     project_name=project_name or "Projeto",
                     include_mermaid=True,
-                    documents_to_generate=['backend_analysis', 'functionality_mapping']
+                    documents_to_generate=None  # Usa a lista padrão completa: ['project_functions', 'project_diagram', 'delphi_java_correlation', 'project_description']
                 )
                 
-                # Mapeia para nomes de exibição amigáveis
+                # CORREÇÃO: Mapeia para nomes de exibição usando os tipos corretos
                 generated_docs = {}
                 for doc_type, content in generated_docs_content.items():
                     display_name = {
-                        'backend_analysis': '🔧 Análise de Backend',
-                        'functionality_mapping': '🔗 Mapeamento de Funcionalidades',
-                        'mermaid_diagram': '📊 Diagrama Mermaid',
+                        'project_functions': '⚙️ Funções do Projeto Original',
+                        'project_diagram': '� Diagrama do Projeto Original',
+                        'delphi_java_correlation': '🔗 Correlação Delphi-Java',
+                        'project_description': '� Descrição do Projeto',
                         'readme': '📄 Resumo do Projeto'
                     }.get(doc_type, doc_type.title())
                     
@@ -484,7 +737,7 @@ def show_analysis_summary(analysis_results: Dict[str, Any], generated_docs: Dict
         st.metric("Arquivos Analisados", total_files)
     
     with col2:
-        units_count = len(analysis_results.get('units_analysis', {}))
+        units_count = len(analysis_results.get('units', {}))  # CORREÇÃO: 'units' ao invés de 'units_analysis'
         st.metric("Units Encontradas", units_count)
     
     with col3:
@@ -495,20 +748,21 @@ def show_analysis_summary(analysis_results: Dict[str, Any], generated_docs: Dict
         complexity = analysis_results.get('characteristics', {}).get('complexity_level', 'Média')
         st.metric("Complexidade", complexity)
     
-    # Lista de documentos gerados
+    # CORREÇÃO: Lista de documentos gerados com nomes corretos
     st.subheader("📄 Documentos Gerados")
     
     doc_names = {
-        'backend_analysis': '🎯 Análise de Backend',
-        'functionality_mapping': '🗺️ Mapeamento de Funcionalidades',
-        'testing_strategy': '🧪 Estratégia de Testes',
-        'mermaid_diagram': '� Diagrama Mermaid'
+        'project_functions': '⚙️ Funções do Projeto Original',
+        'project_diagram': '� Diagrama do Projeto Original', 
+        'delphi_java_correlation': '🔗 Correlação Delphi-Java',
+        'project_description': '📝 Descrição do Projeto',
+        'readme': '📄 Resumo do Projeto'
     }
     
-    for doc_key, doc_path in generated_docs.items():
+    for doc_key, content in generated_docs.items():
         doc_name = doc_names.get(doc_key, doc_key.title())
-        file_size = os.path.getsize(doc_path) if os.path.exists(doc_path) else 0
-        st.write(f"✅ {doc_name} ({file_size} bytes)")
+        content_size = len(content) if isinstance(content, str) else 0  # CORREÇÃO: calcula tamanho do conteúdo
+        st.write(f"✅ {doc_name} ({content_size} caracteres)")
     
     st.info("📝 **Próximo Passo**: Revise os documentos gerados na aba 'Documentos Gerados' e forneça feedback se necessário.")
 
@@ -519,19 +773,19 @@ def render_documents_tab():
         st.info("📋 Nenhum documento gerado ainda. Execute a análise primeiro.")
         return
     
-    # Mapeamento de nomes amigáveis para os documentos
+    # CORREÇÃO: Mapeamento completo de nomes amigáveis para os documentos
     doc_names = {
-        'backend_analysis': '🎯 Análise de Backend',
-        'functionality_mapping': '🗺️ Mapeamento de Funcionalidades',
-        'testing_strategy': '🧪 Estratégia de Testes',
-        'mermaid_diagram': '� Diagrama Mermaid',
-        # Compatibilidade com nomes antigos
-        'executive_summary': '📋 Resumo Executivo',
-        'requirements': '📝 Requisitos do Sistema',
-        'functionality': '⚙️ Funcionalidades',
-        'characteristics': '🔧 Características Técnicas',
-        'technical_analysis': '🧪 Análise Técnica',
-        'structured_data': '📋 Dados Estruturados'
+        'project_functions': '⚙️ Funções do Projeto Original',
+        'project_diagram': '� Diagrama do Projeto Original', 
+        'delphi_java_correlation': '🔗 Correlação Delphi-Java',
+        'project_description': '📝 Descrição do Projeto',
+        'readme': '📄 Resumo do Projeto',
+        # Compatibilidade com nomes de exibição
+        '⚙️ Funções do Projeto Original': '⚙️ Funções do Projeto Original',
+        '📊 Diagrama do Projeto Original': '� Diagrama do Projeto Original',
+        '🔗 Correlação Delphi-Java': '� Correlação Delphi-Java',
+        '📝 Descrição do Projeto': '📝 Descrição do Projeto',
+        '📄 Resumo do Projeto': '� Resumo do Projeto'
     }
     
     # Filtra apenas documentos válidos (strings com caminhos)

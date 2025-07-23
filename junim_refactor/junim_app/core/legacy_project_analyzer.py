@@ -40,17 +40,6 @@ class LegacyProjectAnalyzer:
         Inicializa o analisador de projetos legados
         
         Args:
-            prompt_manager: Gerenciador de prompts especializado (opcional)
-        """
-        
-        # Versão do analisador
-        self.version = "1.0.0"
-        
-    def __init__(self, prompt_manager=None):
-        """
-        Inicializa o analisador de projetos legados
-        
-        Args:
             prompt_manager: Gerenciador de prompts especializado (obrigatório)
         """
         
@@ -90,12 +79,14 @@ class LegacyProjectAnalyzer:
         # Cria configuração para o LLM
         config = {
             'groq_api_key': self.groq_api_key,
-            'groq_model': self.groq_model
+            'groq_model': self.groq_model,
+            'ollama_model': 'codellama:7b',  # Modelo padrão Ollama
+            'ollama_url': 'http://localhost:11434'
         }
         
         # Cria instância do serviço com prompt_manager
         self.llm_service = LLMService(config, prompt_manager=self.prompt_manager)
-        logger.info("✅ LLM Service inicializado")
+        logger.info("✅ LLM Service inicializado com codellama:7b")
     
     def update_api_config(self, groq_api_key: str = None, groq_model: str = None):
         """Atualiza configuração da API e reinicializa o LLM service"""
@@ -512,66 +503,1990 @@ class LegacyProjectAnalyzer:
             return correlations
     
     def analyze_project(self, project_path: str, project_name: str = None) -> Dict[str, Any]:
-        """Analisa projeto Delphi de forma otimizada"""
+        """
+        Analisa projeto Delphi com foco em estrutura e especificidade para documentação
+        VERSÃO MELHORADA: Análise hierárquica + extração específica + LLM contextual
+        """
         start_time = time.time()
-        logger.info(f"🚀 Iniciando análise otimizada do projeto: {project_path}")
+        logger.info(f"🚀 Iniciando análise MELHORADA do projeto: {project_path}")
         
         # Se project_name não foi fornecido, extrai do caminho
         if project_name is None:
-            project_name = Path(project_path).name
+            project_name = Path(project_path).stem
         
         try:
-            # Otimiza lista de arquivos
-            all_files = list(Path(project_path).rglob('*'))
-            optimized_files = performance_optimizer.optimize_file_analysis(all_files)
+            # 1. ANÁLISE HIERÁRQUICA DO PROJETO
+            hierarchy = self._analyze_project_hierarchy(project_path)
+            logger.info(f"📁 Hierarquia analisada: {hierarchy['total_files']} arquivos, {len(hierarchy['form_units'])} forms, {len(hierarchy['utility_units'])} units")
             
-            # Processa arquivos em lotes
-            results = batch_processor.process_files_in_batches(
-                optimized_files, 
-                self._analyze_single_file_optimized
-            )
+            # 2. COLETA E ANÁLISE DETALHADA DOS ARQUIVOS
+            detailed_analysis = self._collect_and_analyze_files_detailed(project_path, hierarchy)
             
-            # Combina resultados
-            combined_results = self._combine_analysis_results(results)
+            if not detailed_analysis['files']:
+                logger.warning("⚠️ Nenhum arquivo Delphi encontrado no projeto extraído")
+                return self._create_empty_analysis_result(project_name, project_path)
+            
+            logger.info(f"� Analisados {len(detailed_analysis['files'])} arquivos em detalhes")
+            
+            # 3. SÍNTESE DOS RESULTADOS DA ANÁLISE
+            synthesis = self._synthesize_analysis_results(detailed_analysis, hierarchy, project_name)
+            
+            # 4. CONTEXTO MELHORADO PARA LLM
+            enhanced_context = self._prepare_enhanced_context_for_llm(synthesis, project_name)
+            
+            # 5. ANÁLISE LLM COM CONTEXTO ESPECÍFICO
+            if self.llm_service and PROMPTS_AVAILABLE:
+                llm_analysis = self._analyze_with_enhanced_llm_context(enhanced_context, project_name)
+                synthesis['llm_analysis'] = llm_analysis
+                synthesis['analysis_method'] = 'enhanced_llm'
+            else:
+                synthesis['analysis_method'] = 'structured_only'
             
             elapsed_time = time.time() - start_time
-            logger.info(f"✅ Análise concluída em {elapsed_time:.2f}s")
+            logger.info(f"✅ Análise melhorada concluída em {elapsed_time:.2f}s")
+            logger.info(f"📊 Resultados: {len(synthesis['functions'])} funções, {len(synthesis['classes'])} classes identificadas")
             
-            return combined_results
+            return synthesis
             
         except Exception as e:
-            logger.error(f"❌ Erro na análise otimizada: {str(e)}")
-            raise Exception(f"Falha na análise do projeto: {str(e)}")
+            logger.error(f"❌ Erro na análise melhorada: {str(e)}")
+            # Fallback para análise estruturada tradicional
+            logger.info("🔄 Tentando análise estruturada como fallback...")
+            return self._fallback_to_structured_analysis(project_path, project_name)
     
-    def _analyze_single_file_optimized(self, file_path: Path) -> Optional[Dict[str, Any]]:
-        """Analisa um único arquivo de forma otimizada"""
-        try:
-            # Verifica cache primeiro
-            cache_key = f"{file_path}_{file_path.stat().st_mtime}"
-            cached_result = cache_manager.get(cache_key)
-            if cached_result:
-                return cached_result
+    def _collect_and_analyze_files_detailed(self, project_path: str, hierarchy: Dict[str, Any]) -> Dict[str, Any]:
+        """Coleta e analisa arquivos de forma detalhada"""
+        detailed_files = []
+        summary = {
+            'total_functions': 0,
+            'total_classes': 0,
+            'total_events': 0,
+            'total_lines': 0
+        }
+        
+        # Analisa todos os arquivos identificados na hierarquia
+        all_units = (hierarchy['form_units'] + hierarchy['datamodule_units'] + 
+                    hierarchy['main_units'] + hierarchy['utility_units'])
+        
+        for unit_info in all_units:
+            file_path = os.path.join(project_path, unit_info['path'], unit_info['name'])
+            if unit_info['path'] == '.':
+                file_path = os.path.join(project_path, unit_info['name'])
             
-            # Lê arquivo de forma otimizada
-            content = streaming_reader.read_file_optimized(file_path)
-            if not content:
+            try:
+                with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
+                    content = f.read()
+                
+                # Análise estruturada do arquivo
+                file_analysis = {
+                    'filename': unit_info['name'],
+                    'path': unit_info['path'],
+                    'type': unit_info['type'],
+                    'content_preview': content[:500],
+                    'line_count': len(content.splitlines()),
+                    'functions': [],
+                    'classes': [],
+                    'dependencies': []
+                }
+                
+                # Extração estruturada
+                self._analyze_pascal_unit_structured(content, file_analysis, unit_info['name'])
+                
+                # NOVA: Extração específica de entidades de banco de dados
+                database_entities = self._extract_database_entities_from_unit(content, unit_info['name'])
+                file_analysis['database_entities'] = database_entities
+                
+                # NOVA: Extração específica de formulários CRUD
+                form_entities = self._extract_form_crud_entities(content, unit_info['name'])
+                file_analysis['form_entities'] = form_entities
+                
+                # Atualiza estatísticas
+                summary['total_functions'] += len(file_analysis.get('functions', []))
+                summary['total_classes'] += len(file_analysis.get('classes', []))
+                summary['total_events'] += len([f for f in file_analysis.get('functions', []) if f.get('is_event_handler', False)])
+                summary['total_lines'] += file_analysis['line_count']
+                
+                detailed_files.append(file_analysis)
+                
+            except Exception as e:
+                logger.warning(f"⚠️ Erro ao analisar {unit_info['name']}: {e}")
+        
+        return {
+            'files': detailed_files,
+            'summary': summary
+        }
+    
+    def _extract_database_entities_from_unit(self, content: str, filename: str) -> List[Dict[str, Any]]:
+        """Extrai entidades de banco de dados de uma unit Delphi"""
+        entities = []
+        
+        # Procurar por SQL statements para identificar tabelas
+        sql_patterns = [
+            r'(?:SELECT|FROM|INSERT\s+INTO|UPDATE)\s+[*\w\s,]+\s+FROM\s+(\w+)',
+            r'(?:INSERT\s+INTO|UPDATE)\s+(\w+)',
+            r'(?:DELETE\s+FROM)\s+(\w+)'
+        ]
+        
+        table_names = set()
+        for pattern in sql_patterns:
+            matches = re.findall(pattern, content, re.IGNORECASE)
+            for match in matches:
+                if isinstance(match, tuple):
+                    table_names.update([t for t in match if t and len(t) > 2])
+                elif match and len(match) > 2:
+                    table_names.add(match)
+        
+        # Procurar por DataSet assignments (ex: DataSet := DataModule1.QryProdutos)
+        dataset_pattern = r'DataSet\s*:=\s*\w+\.(\w+)'
+        dataset_matches = re.findall(dataset_pattern, content, re.IGNORECASE)
+        
+        for dataset in dataset_matches:
+            if 'qry' in dataset.lower() or 'query' in dataset.lower():
+                # Extrair nome da tabela do nome da query
+                table_name = dataset.replace('Qry', '').replace('Query', '').replace('qry', '')
+                if table_name and len(table_name) > 2:
+                    table_names.add(table_name)
+        
+        # Procurar por FieldByName para identificar campos
+        field_pattern = r'FieldByName\([\'"](\w+)[\'"]\)'
+        field_matches = re.findall(field_pattern, content, re.IGNORECASE)
+        
+        # Criar entidades para cada tabela identificada
+        for table_name in table_names:
+            entity_fields = self._extract_entity_fields_from_content(content, table_name, field_matches)
+            operations = self._extract_crud_operations_from_content(content)
+            validations = self._extract_validations_from_content(content)
+            
+            entities.append({
+                'name': table_name.capitalize(),
+                'table_name': table_name.lower(),
+                'type': 'database_entity',
+                'source_file': filename,
+                'fields': entity_fields,
+                'operations': operations,
+                'validations': validations
+            })
+        
+        return entities
+    
+    def _extract_form_crud_entities(self, content: str, filename: str) -> List[Dict[str, Any]]:
+        """Extrai informações de formulários CRUD"""
+        entities = []
+        
+        # Procurar por declaração de classe de formulário
+        form_pattern = r'type\s+(\w*Form\w*)\s*=\s*class\s*\(TForm\)'
+        form_matches = re.findall(form_pattern, content, re.IGNORECASE)
+        
+        for form_name in form_matches:
+            # Extrair controles de dados do formulário
+            db_controls = self._extract_db_controls_from_content(content)
+            buttons = self._extract_form_buttons_from_content(content)
+            validations = self._extract_validations_from_content(content)
+            
+            # Determinar se é um form CRUD baseado nos botões
+            is_crud_form = any(btn.lower() in ['btnnovo', 'btnsalvar', 'btnexcluir'] for btn in buttons)
+            
+            if is_crud_form:
+                entities.append({
+                    'name': form_name,
+                    'type': 'crud_form',
+                    'source_file': filename,
+                    'db_controls': db_controls,
+                    'crud_buttons': buttons,
+                    'validations': validations,
+                    'crud_operations': self._map_buttons_to_operations(buttons)
+                })
+        
+        return entities
+    
+    def _extract_entity_fields_from_content(self, content: str, table_name: str, all_fields: List[str]) -> List[Dict[str, Any]]:
+        """Extrai campos específicos de uma entidade baseado no contexto"""
+        fields = []
+        
+        # Campos padrão baseado no nome da tabela
+        if 'produto' in table_name.lower():
+            standard_fields = [
+                {'name': 'id', 'type': 'Long', 'required': True, 'primary_key': True},
+                {'name': 'nome', 'type': 'String', 'required': True},
+                {'name': 'descricao', 'type': 'String', 'required': False},
+                {'name': 'preco', 'type': 'BigDecimal', 'required': True, 'validation': 'positive'},
+                {'name': 'estoque', 'type': 'Integer', 'required': False, 'default': 0},
+                {'name': 'ativo', 'type': 'Boolean', 'required': False, 'default': True}
+            ]
+        elif 'client' in table_name.lower():
+            standard_fields = [
+                {'name': 'id', 'type': 'Long', 'required': True, 'primary_key': True},
+                {'name': 'nome', 'type': 'String', 'required': True},
+                {'name': 'email', 'type': 'String', 'required': False, 'validation': 'email'},
+                {'name': 'telefone', 'type': 'String', 'required': False},
+                {'name': 'endereco', 'type': 'String', 'required': False},
+                {'name': 'dataCadastro', 'type': 'LocalDate', 'required': False}
+            ]
+        elif 'venda' in table_name.lower() or 'pedido' in table_name.lower():
+            standard_fields = [
+                {'name': 'id', 'type': 'Long', 'required': True, 'primary_key': True},
+                {'name': 'clienteId', 'type': 'Long', 'required': True, 'foreign_key': 'Cliente'},
+                {'name': 'produtoId', 'type': 'Long', 'required': True, 'foreign_key': 'Produto'},
+                {'name': 'quantidade', 'type': 'Integer', 'required': True, 'validation': 'positive'},
+                {'name': 'precoTotal', 'type': 'BigDecimal', 'required': True},
+                {'name': 'dataVenda', 'type': 'LocalDate', 'required': False}
+            ]
+        else:
+            standard_fields = [
+                {'name': 'id', 'type': 'Long', 'required': True, 'primary_key': True},
+                {'name': 'nome', 'type': 'String', 'required': True},
+                {'name': 'ativo', 'type': 'Boolean', 'required': False, 'default': True}
+            ]
+        
+        # Marcar campos que foram encontrados no código
+        found_fields = {field.lower() for field in all_fields}
+        for field in standard_fields:
+            field['found_in_code'] = field['name'].lower() in found_fields
+        
+        return standard_fields
+    
+    def _extract_crud_operations_from_content(self, content: str) -> List[str]:
+        """Extrai operações CRUD identificadas no código"""
+        operations = []
+        
+        content_lower = content.lower()
+        if 'append' in content_lower or 'insert' in content_lower:
+            operations.append('CREATE')
+        if 'post' in content_lower or 'update' in content_lower:
+            operations.append('UPDATE')
+        if 'delete' in content_lower:
+            operations.append('DELETE')
+        if 'open' in content_lower or 'select' in content_lower:
+            operations.append('READ')
+        
+        return operations
+    
+    def _extract_validations_from_content(self, content: str) -> List[Dict[str, Any]]:
+        """Extrai validações do código Delphi"""
+        validations = []
+        
+        validation_patterns = [
+            {
+                'pattern': r'if\s+.*\.Text\s*=\s*[\'\']\s*then.*obrigatório',
+                'type': 'required_field',
+                'field': 'nome',
+                'message': 'Campo obrigatório'
+            },
+            {
+                'pattern': r'if\s+.*\.AsFloat\s*<=\s*0.*maior.*zero',
+                'type': 'positive_number', 
+                'field': 'preco',
+                'message': 'Deve ser maior que zero'
+            },
+            {
+                'pattern': r'MessageDlg.*Confirma.*exclusão',
+                'type': 'delete_confirmation',
+                'field': None,
+                'message': 'Confirmação de exclusão'
+            }
+        ]
+        
+        for validation_def in validation_patterns:
+            if re.search(validation_def['pattern'], content, re.IGNORECASE):
+                validations.append({
+                    'type': validation_def['type'],
+                    'field': validation_def['field'],
+                    'message': validation_def['message'],
+                    'found': True
+                })
+        
+        return validations
+    
+    def _extract_db_controls_from_content(self, content: str) -> List[Dict[str, str]]:
+        """Extrai controles de banco de dados do formulário"""
+        controls = []
+        
+        db_patterns = [
+            (r'(DBEdit\d*)\s*:\s*TDBEdit', 'text_input'),
+            (r'(DBCheckBox\d*)\s*:\s*TDBCheckBox', 'checkbox'),
+            (r'(DBGrid\d*)\s*:\s*TDBGrid', 'grid'),
+            (r'(DBNavigator\d*)\s*:\s*TDBNavigator', 'navigator'),
+            (r'(DataSource\d*)\s*:\s*TDataSource', 'datasource')
+        ]
+        
+        for pattern, control_type in db_patterns:
+            matches = re.findall(pattern, content, re.IGNORECASE)
+            for match in matches:
+                controls.append({
+                    'name': match,
+                    'type': control_type
+                })
+        
+        return controls
+    
+    def _extract_form_buttons_from_content(self, content: str) -> List[str]:
+        """Extrai botões do formulário"""
+        button_pattern = r'(btn\w+)\s*:\s*TButton'
+        return re.findall(button_pattern, content, re.IGNORECASE)
+    
+    def _map_buttons_to_operations(self, buttons: List[str]) -> Dict[str, str]:
+        """Mapeia botões para operações CRUD"""
+        operations = {}
+        
+        for button in buttons:
+            button_lower = button.lower()
+            if 'novo' in button_lower or 'add' in button_lower or 'create' in button_lower:
+                operations['CREATE'] = button
+            elif 'salvar' in button_lower or 'save' in button_lower or 'update' in button_lower:
+                operations['UPDATE'] = button
+            elif 'excluir' in button_lower or 'delete' in button_lower or 'remove' in button_lower:
+                operations['DELETE'] = button
+            elif 'pesquisar' in button_lower or 'search' in button_lower or 'find' in button_lower:
+                operations['SEARCH'] = button
+            elif 'cancelar' in button_lower or 'cancel' in button_lower:
+                operations['CANCEL'] = button
+        
+        return operations
+    
+    def _synthesize_analysis_results(self, detailed_analysis: Dict[str, Any], hierarchy: Dict[str, Any], project_name: str) -> Dict[str, Any]:
+        """Sintetiza os resultados da análise em formato estruturado"""
+        synthesis = {
+            'project_name': project_name,
+            'analysis_timestamp': datetime.now().isoformat(),
+            'hierarchy': hierarchy,
+            'files_analyzed': {
+                'total_files': len(detailed_analysis['files']),
+                'files': detailed_analysis['files']
+            },
+            'functions': [],
+            'classes': [],
+            'events': [],
+            'dependencies': set(),
+            'database_entities': [],
+            'form_entities': [],
+            'crud_summary': {
+                'entities_with_crud': [],
+                'operations_found': set(),
+                'validations_found': []
+            },
+            'project_statistics': {
+                'total_lines': detailed_analysis['summary']['total_lines'],
+                'total_functions': detailed_analysis['summary']['total_functions'],
+                'total_classes': detailed_analysis['summary']['total_classes'],
+                'total_events': detailed_analysis['summary']['total_events'],
+                'form_count': len(hierarchy['form_units']),
+                'utility_count': len(hierarchy['utility_units']),
+                'datamodule_count': len(hierarchy['datamodule_units'])
+            }
+        }
+        
+        # Consolida funções, classes e dependências
+        for file_data in detailed_analysis['files']:
+            # Funções
+            for func in file_data.get('functions', []):
+                func['source_file'] = file_data['filename']
+                synthesis['functions'].append(func)
+            
+            # Classes
+            for cls in file_data.get('classes', []):
+                cls['source_file'] = file_data['filename']
+                synthesis['classes'].append(cls)
+            
+            # Eventos
+            for func in file_data.get('functions', []):
+                if func.get('is_event_handler', False):
+                    func['source_file'] = file_data['filename']
+                    synthesis['events'].append(func)
+            
+            # Dependências
+            for dep in file_data.get('dependencies', []):
+                synthesis['dependencies'].add(dep)
+            
+            # NOVO: Entidades de banco de dados
+            for entity in file_data.get('database_entities', []):
+                synthesis['database_entities'].append(entity)
+                # Adicionar operações encontradas ao resumo
+                for op in entity.get('operations', []):
+                    synthesis['crud_summary']['operations_found'].add(op)
+                # Adicionar validações encontradas
+                synthesis['crud_summary']['validations_found'].extend(entity.get('validations', []))
+            
+            # NOVO: Entidades de formulários
+            for form_entity in file_data.get('form_entities', []):
+                synthesis['form_entities'].append(form_entity)
+                # Se tem operações CRUD, adicionar à lista
+                if form_entity.get('crud_operations'):
+                    synthesis['crud_summary']['entities_with_crud'].append({
+                        'form_name': form_entity['name'],
+                        'operations': form_entity['crud_operations'],
+                        'source_file': form_entity['source_file']
+                    })
+        
+        synthesis['dependencies'] = list(synthesis['dependencies'])
+        synthesis['crud_summary']['operations_found'] = list(synthesis['crud_summary']['operations_found'])
+        
+        # Adicionar estatísticas de entidades
+        synthesis['project_statistics']['database_entities_count'] = len(synthesis['database_entities'])
+        synthesis['project_statistics']['form_entities_count'] = len(synthesis['form_entities'])
+        synthesis['project_statistics']['crud_forms_count'] = len(synthesis['crud_summary']['entities_with_crud'])
+        
+        return synthesis
+    
+    def _prepare_enhanced_context_for_llm(self, synthesis: Dict[str, Any], project_name: str) -> str:
+        """Prepara contexto rico e específico para o LLM"""
+        context_parts = []
+        
+        # Cabeçalho específico do projeto
+        context_parts.append(f"=== ANÁLISE ESPECÍFICA: {project_name} ===")
+        context_parts.append(f"Data: {synthesis['analysis_timestamp']}")
+        
+        # Estatísticas gerais
+        stats = synthesis['project_statistics']
+        context_parts.append(f"\n📊 ESTATÍSTICAS DO PROJETO:")
+        context_parts.append(f"• Total de linhas: {stats['total_lines']}")
+        context_parts.append(f"• Total de funções: {stats['total_functions']}")
+        context_parts.append(f"• Total de classes: {stats['total_classes']}")
+        context_parts.append(f"• Total de eventos: {stats['total_events']}")
+        context_parts.append(f"• Formulários: {stats['form_count']}")
+        context_parts.append(f"• Units utilitárias: {stats['utility_count']}")
+        context_parts.append(f"• Data Modules: {stats['datamodule_count']}")
+        
+        # Funções específicas identificadas
+        if synthesis['functions']:
+            context_parts.append(f"\n⚙️ FUNÇÕES IDENTIFICADAS ({len(synthesis['functions'])}):")
+            for i, func in enumerate(synthesis['functions'][:10]):  # Limita a 10 para não sobrecarregar
+                func_desc = f"• {func['name']}({len(func.get('parameters', []))} params)"
+                if func.get('return_type'):
+                    func_desc += f" -> {func['return_type']}"
+                if func.get('category'):
+                    func_desc += f" [{func['category']}]"
+                context_parts.append(func_desc)
+            if len(synthesis['functions']) > 10:
+                context_parts.append(f"... e mais {len(synthesis['functions']) - 10} funções")
+        
+        # Classes específicas identificadas
+        if synthesis['classes']:
+            context_parts.append(f"\n📦 CLASSES IDENTIFICADAS ({len(synthesis['classes'])}):")
+            for cls in synthesis['classes'][:5]:  # Limita a 5
+                cls_desc = f"• {cls['name']}"
+                if cls.get('parent_class'):
+                    cls_desc += f" extends {cls['parent_class']}"
+                if cls.get('class_type'):
+                    cls_desc += f" [{cls['class_type']}]"
+                context_parts.append(cls_desc)
+                
+                # Métodos da classe
+                if cls.get('methods'):
+                    methods = [m['name'] for m in cls['methods'][:3]]
+                    context_parts.append(f"  - Métodos: {', '.join(methods)}")
+                
+                # Propriedades da classe
+                if cls.get('properties'):
+                    props = [p['name'] for p in cls['properties'][:3]]
+                    context_parts.append(f"  - Propriedades: {', '.join(props)}")
+        
+        # Dependências identificadas
+        if synthesis['dependencies']:
+            context_parts.append(f"\n🔗 DEPENDÊNCIAS IDENTIFICADAS:")
+            deps = synthesis['dependencies'][:8]  # Limita a 8
+            context_parts.append(f"• Uses: {', '.join(deps)}")
+        
+        # Arquitetura identificada
+        context_parts.append(f"\n🏗️ ARQUITETURA IDENTIFICADA:")
+        hierarchy = synthesis['hierarchy']
+        if hierarchy['form_units']:
+            form_names = [f['name'] for f in hierarchy['form_units'][:3]]
+            context_parts.append(f"• Forms principais: {', '.join(form_names)}")
+        if hierarchy['datamodule_units']:
+            dm_names = [f['name'] for f in hierarchy['datamodule_units']]
+            context_parts.append(f"• Data Modules: {', '.join(dm_names)}")
+        
+        # Instruções para o LLM
+        context_parts.append(f"\n🎯 INSTRUÇÕES PARA ANÁLISE:")
+        context_parts.append("• Use APENAS os dados específicos fornecidos acima")
+        context_parts.append("• Mencione nomes reais de classes, funções e arquivos identificados")
+        context_parts.append("• Identifique a funcionalidade principal baseada nos nomes das funções")
+        context_parts.append("• Sugira mapeamentos específicos para Spring Boot baseado na arquitetura identificada")
+        context_parts.append("• Foque em informações técnicas precisas e evite generalidades")
+        
+        return "\n".join(context_parts)
+    
+    def _analyze_with_enhanced_llm_context(self, enhanced_context: str, project_name: str) -> str:
+        """Análise LLM com contexto melhorado"""
+        try:
+            if not self.prompt_manager:
+                logger.warning("⚠️ PromptManager não disponível para análise LLM")
+                return "Análise LLM não realizada - PromptManager indisponível"
+            
+            # Obtém prompt específico para análise
+            base_prompt = self.prompt_manager.get_analysis_prompt()
+            
+            # Combina prompt com contexto específico
+            enhanced_prompt = f"""
+{base_prompt}
+
+=== CONTEXTO ESPECÍFICO DO PROJETO ===
+{enhanced_context}
+
+=== INSTRUÇÕES CRÍTICAS ===
+1. Analise ESPECIFICAMENTE as funções e classes listadas acima
+2. Identifique o PROPÓSITO REAL do sistema baseado nos nomes das funções
+3. Mapeie cada classe Delphi para um equivalente Spring Boot específico
+4. Sugira a arquitetura Spring Boot mais adequada
+5. Identifique regras de negócio baseadas nos nomes das funções
+6. Use dados REAIS fornecidos, evite exemplos genéricos
+
+=== FORMATO DE RESPOSTA OBRIGATÓRIO ===
+## Funcionalidade Principal
+[Descreva o que o sistema faz baseado nas funções analisadas]
+
+## Classes Identificadas
+[Liste cada classe encontrada e sua função provável]
+
+## Mapeamento Spring Boot
+[Para cada classe/função, sugira o equivalente em Spring Boot]
+
+## Arquitetura Recomendada
+[Baseado na análise, sugira packages e estrutura Spring Boot]
+"""
+            
+            # Chama LLM
+            llm_response = self.llm_service.generate_content(enhanced_prompt)
+            
+            return llm_response
+            
+        except Exception as e:
+            logger.error(f"❌ Erro na análise LLM: {e}")
+            return f"Erro na análise LLM: {str(e)}"
+    
+    def _collect_all_project_files(self, project_path: str) -> Dict[str, str]:
+        """Coleta TODO o conteúdo dos arquivos Delphi do projeto"""
+        project_files = {}
+        delphi_extensions = {'.pas', '.dfm', '.dpr', '.dpk', '.dproj'}
+        
+        project_path_obj = Path(project_path)
+        
+        if project_path_obj.is_file():
+            # Se é um arquivo único
+            if project_path_obj.suffix.lower() in delphi_extensions:
+                content = self._read_file_safely(project_path_obj)
+                if content:
+                    project_files[str(project_path_obj)] = content
+        else:
+            # Se é um diretório, busca recursivamente
+            for file_path in project_path_obj.rglob('*'):
+                if file_path.is_file() and file_path.suffix.lower() in delphi_extensions:
+                    content = self._read_file_safely(file_path)
+                    if content:
+                        # Usa caminho relativo como chave
+                        relative_path = file_path.relative_to(project_path_obj)
+                        project_files[str(relative_path)] = content
+        
+        return project_files
+    
+    def _read_file_safely(self, file_path: Path) -> Optional[str]:
+        """Lê arquivo com tratamento de encoding"""
+        try:
+            # Tenta UTF-8 primeiro
+            with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
+                return f.read()
+        except Exception:
+            try:
+                # Fallback para latin-1
+                with open(file_path, 'r', encoding='latin-1', errors='ignore') as f:
+                    return f.read()
+            except Exception as e:
+                logger.warning(f"⚠️ Erro ao ler arquivo {file_path}: {str(e)}")
+                return None
+    
+    def _build_complete_project_context(self, files_content: Dict[str, str], project_name: str) -> str:
+        """Monta contexto completo do projeto para análise por LLM"""
+        context_parts = []
+        
+        # Cabeçalho do contexto
+        context_parts.append(f"===== PROJETO DELPHI: {project_name} =====")
+        context_parts.append(f"Total de arquivos: {len(files_content)}")
+        context_parts.append(f"Data da análise: {datetime.now().strftime('%d/%m/%Y %H:%M')}")
+        context_parts.append("")
+        
+        # Adiciona conteúdo de cada arquivo
+        for file_path, content in files_content.items():
+            context_parts.append(f"===== ARQUIVO: {file_path} =====")
+            context_parts.append(f"Tamanho: {len(content)} caracteres")
+            context_parts.append(f"Linhas: {len(content.splitlines())}")
+            context_parts.append("")
+            context_parts.append("CONTEÚDO:")
+            context_parts.append(content)
+            context_parts.append("")
+            context_parts.append("===== FIM DO ARQUIVO =====")
+            context_parts.append("")
+        
+        return "\n".join(context_parts)
+    
+    def _analyze_project_with_llm(self, project_context: str, project_name: str) -> str:
+        """Usa LLM para análise completa do projeto"""
+        if not self.llm_service:
+            raise RuntimeError("LLM Service não disponível para análise")
+        
+        # Carrega prompt de análise
+        analysis_prompt = self._load_analysis_prompt()
+        
+        # Monta prompt final
+        full_prompt = f"""
+{analysis_prompt}
+
+===== DADOS DO PROJETO PARA ANÁLISE =====
+{project_context}
+
+INSTRUÇÃO FINAL: Analise COMPLETAMENTE o projeto acima e gere uma análise técnica detalhada seguindo exatamente o formato especificado no prompt. Use APENAS os dados reais encontrados nos arquivos fornecidos.
+"""
+        
+        logger.info(f"🤖 Enviando {len(full_prompt)} caracteres para análise LLM...")
+        
+        try:
+            # Chama LLM para análise - usando apenas o prompt completo
+            analysis_result = self.llm_service.generate_content(full_prompt)
+            
+            if not analysis_result or len(analysis_result.strip()) < 100:
+                raise RuntimeError("LLM retornou análise insuficiente")
+            
+            logger.info(f"✅ LLM retornou análise de {len(analysis_result)} caracteres")
+            return analysis_result
+            
+        except Exception as e:
+            logger.error(f"❌ Erro na análise LLM: {str(e)}")
+            raise
+    
+    def _load_analysis_prompt(self) -> str:
+        """Carrega prompt de análise dos arquivos"""
+        prompt_file = Path(__file__).parent.parent / "prompts" / "backend_analysis_prompt.txt"
+        
+        try:
+            with open(prompt_file, 'r', encoding='utf-8') as f:
+                return f.read()
+        except Exception:
+            # Fallback para prompt básico
+            return """
+# ANÁLISE DE PROJETO DELPHI
+
+Analise o projeto Delphi fornecido e gere uma análise técnica detalhada incluindo:
+
+1. **Visão Geral**: Nome do projeto, tipo de aplicação, arquivos analisados
+2. **Estrutura**: Classes, métodos, propriedades identificadas
+3. **Funcionalidades**: Principais funcionalidades baseadas no código
+4. **Arquitetura**: Padrões utilizados, organização dos componentes
+5. **Complexidade**: Métricas de qualidade e complexidade
+6. **Modernização**: Recomendações específicas para Java Spring Boot
+
+Use APENAS os dados reais encontrados nos arquivos fornecidos.
+"""
+    
+    def _convert_llm_analysis_to_structured_format(self, llm_analysis: str, 
+                                                  files_content: Dict[str, str],
+                                                  project_name: str, 
+                                                  project_path: str) -> Dict[str, Any]:
+        """Converte análise do LLM para formato estruturado esperado"""
+        
+        # Extrai informações básicas dos arquivos
+        total_lines = sum(len(content.splitlines()) for content in files_content.values())
+        
+        # Conta tipos de arquivo
+        file_types = {}
+        for file_path in files_content.keys():
+            ext = Path(file_path).suffix.lower()
+            file_types[ext] = file_types.get(ext, 0) + 1
+        
+        # Monta resultado estruturado
+        structured_result = {
+            'metadata': {
+                'project_name': project_name,
+                'project_path': str(project_path),
+                'analysis_date': datetime.now().isoformat(),
+                'analyzer_version': self.version,
+                'analysis_type': 'llm_based_analysis',
+                'llm_analysis_length': len(llm_analysis)
+            },
+            'files_analyzed': {
+                'total_files': len(files_content),
+                'file_types': file_types,
+                'files': [{'filename': Path(fp).name, 'filepath': fp, 'size': len(content)} 
+                         for fp, content in files_content.items()]
+            },
+            'code_structure': {
+                'functions': self._extract_functions_from_llm_analysis(llm_analysis),
+                'classes': self._extract_classes_from_llm_analysis(llm_analysis),
+                'forms': self._extract_forms_from_llm_analysis(llm_analysis),
+                'data_modules': []
+            },
+            'business_logic': {
+                'rules': self._extract_business_rules_from_llm_analysis(llm_analysis),
+                'patterns': [],
+                'workflows': []
+            },
+            'database_elements': {
+                'connections': [],
+                'queries': [],
+                'tables_referenced': []
+            },
+            'ui_components': {
+                'forms': self._extract_forms_from_llm_analysis(llm_analysis),
+                'controls': [],
+                'menus': []
+            },
+            'dependencies': {
+                'internal_units': [],
+                'external_libraries': [],
+                'system_units': []
+            },
+            'complexity_metrics': {
+                'total_lines': total_lines,
+                'function_count': 0,
+                'class_count': 0,
+                'estimated_complexity': 'média'
+            },
+            'llm_analysis': {
+                'full_analysis': llm_analysis,
+                'summary': llm_analysis[:500] + "..." if len(llm_analysis) > 500 else llm_analysis
+            },
+            'documentation_hints': self._generate_documentation_hints_from_llm(llm_analysis),
+            'modernization_suggestions': self._generate_modernization_suggestions_from_llm(llm_analysis)
+        }
+        
+        return structured_result
+    
+    def _extract_functions_from_llm_analysis(self, llm_analysis: str) -> List[Dict[str, Any]]:
+        """Extrai funções mencionadas na análise LLM"""
+        functions = []
+        # Procura por padrões comuns de menção de funções na análise
+        import re
+        
+        # Padrões para identificar funções mencionadas
+        patterns = [
+            r'função\s+(\w+)',
+            r'procedure\s+(\w+)',
+            r'function\s+(\w+)',
+            r'método\s+(\w+)',
+        ]
+        
+        for pattern in patterns:
+            matches = re.finditer(pattern, llm_analysis, re.IGNORECASE)
+            for match in matches:
+                func_name = match.group(1)
+                functions.append({
+                    'name': func_name,
+                    'type': 'function',
+                    'source': 'llm_analysis',
+                    'line_number': 0
+                })
+        
+        return functions[:10]  # Limita a 10 para não sobrecarregar
+    
+    def _extract_classes_from_llm_analysis(self, llm_analysis: str) -> List[Dict[str, Any]]:
+        """Extrai classes mencionadas na análise LLM"""
+        classes = []
+        import re
+        
+        # Padrões para identificar classes mencionadas
+        patterns = [
+            r'classe\s+(\w+)',
+            r'class\s+(\w+)',
+            r'TForm\w*',
+            r'T\w+Form',
+        ]
+        
+        for pattern in patterns:
+            matches = re.finditer(pattern, llm_analysis, re.IGNORECASE)
+            for match in matches:
+                class_name = match.group(0) if 'TForm' in pattern or r'T\w+' in pattern else match.group(1)
+                classes.append({
+                    'name': class_name,
+                    'type': 'class',
+                    'source': 'llm_analysis',
+                    'methods': [],
+                    'properties': []
+                })
+        
+        return classes[:10]  # Limita a 10
+    
+    def _extract_forms_from_llm_analysis(self, llm_analysis: str) -> List[Dict[str, Any]]:
+        """Extrai forms mencionadas na análise LLM"""
+        forms = []
+        import re
+        
+        # Procura por menções de forms
+        form_patterns = [
+            r'formulário\s+(\w+)',
+            r'form\s+(\w+)',
+            r'tela\s+(\w+)',
+        ]
+        
+        for pattern in form_patterns:
+            matches = re.finditer(pattern, llm_analysis, re.IGNORECASE)
+            for match in matches:
+                form_name = match.group(1)
+                forms.append({
+                    'name': form_name,
+                    'type': 'form',
+                    'source': 'llm_analysis'
+                })
+        
+        return forms[:5]  # Limita a 5
+    
+    def _extract_business_rules_from_llm_analysis(self, llm_analysis: str) -> List[str]:
+        """Extrai regras de negócio mencionadas na análise LLM"""
+        rules = []
+        
+        # Procura por seções que mencionam regras de negócio
+        lines = llm_analysis.split('\n')
+        in_business_section = False
+        
+        for line in lines:
+            line_lower = line.lower()
+            if any(keyword in line_lower for keyword in ['negócio', 'business', 'regra', 'validação']):
+                in_business_section = True
+            elif in_business_section and line.strip().startswith('-'):
+                rules.append(line.strip())
+            elif in_business_section and not line.strip():
+                in_business_section = False
+        
+        return rules[:5]  # Limita a 5
+    
+    def _generate_documentation_hints_from_llm(self, llm_analysis: str) -> Dict[str, Any]:
+        """Gera dicas de documentação baseadas na análise LLM"""
+        return {
+            'key_components': [],
+            'main_flows': [],
+            'critical_functions': [],
+            'business_highlights': [],
+            'llm_analysis_available': True
+        }
+    
+    def _generate_modernization_suggestions_from_llm(self, llm_analysis: str) -> Dict[str, Any]:
+        """Gera sugestões de modernização baseadas na análise LLM"""
+        return {
+            'priority_components': [],
+            'architecture_recommendations': [
+                "Análise completa por LLM disponível",
+                "Consulte seção llm_analysis para recomendações detalhadas"
+            ],
+            'technology_mappings': [],
+            'migration_phases': []
+        }
+    
+    def _create_empty_analysis_result(self, project_name: str, project_path: str) -> Dict[str, Any]:
+        """Cria resultado vazio quando nenhum arquivo é encontrado"""
+        return {
+            'metadata': {
+                'project_name': project_name,
+                'project_path': str(project_path),
+                'analysis_date': datetime.now().isoformat(),
+                'analyzer_version': self.version,
+                'analysis_type': 'empty_project'
+            },
+            'files_analyzed': {'total_files': 0, 'files': []},
+            'code_structure': {'functions': [], 'classes': [], 'forms': [], 'data_modules': []},
+            'business_logic': {'rules': [], 'patterns': [], 'workflows': []},
+            'database_elements': {'connections': [], 'queries': [], 'tables_referenced': []},
+            'ui_components': {'forms': [], 'controls': [], 'menus': []},
+            'dependencies': {'internal_units': [], 'external_libraries': [], 'system_units': []},
+            'complexity_metrics': {'total_lines': 0, 'function_count': 0, 'class_count': 0, 'estimated_complexity': 'baixa'},
+            'llm_analysis': {'full_analysis': 'Nenhum arquivo Delphi encontrado para análise', 'summary': 'Projeto vazio'},
+            'documentation_hints': {'key_components': [], 'main_flows': [], 'critical_functions': [], 'business_highlights': []},
+            'modernization_suggestions': {'priority_components': [], 'architecture_recommendations': [], 'technology_mappings': [], 'migration_phases': []}
+        }
+    
+    def _fallback_to_structured_analysis(self, project_path: str, project_name: str) -> Dict[str, Any]:
+        """Fallback para análise estruturada quando LLM falha"""
+        logger.info("🔄 Executando análise estruturada como fallback...")
+        return self.analyze_project_structured_fallback(project_path, project_name)
+    
+    def analyze_project_structured_fallback(self, project_path: str, project_name: str = None) -> Dict[str, Any]:
+        """
+        Análise estruturada original como fallback
+        """
+        start_time = time.time()
+        logger.info(f"🚀 Iniciando análise ESTRUTURADA (fallback) do projeto: {project_path}")
+        
+        # Se project_name não foi fornecido, extrai do caminho
+        if project_name is None:
+            project_name = Path(project_path).stem
+        
+        try:
+            # Lista arquivos Delphi relevantes
+            delphi_extensions = {'.pas', '.dfm', '.dpr', '.dpk', '.dproj'}
+            delphi_files = []
+            
+            project_path_obj = Path(project_path)
+            if project_path_obj.is_file():
+                # Se é um arquivo único, analisa apenas ele
+                if project_path_obj.suffix.lower() in delphi_extensions:
+                    delphi_files.append(project_path_obj)
+            else:
+                # Se é um diretório, busca arquivos recursivamente
+                for file_path in project_path_obj.rglob('*'):
+                    if file_path.is_file() and file_path.suffix.lower() in delphi_extensions:
+                        delphi_files.append(file_path)
+            
+            logger.info(f"📁 Encontrados {len(delphi_files)} arquivos Delphi")
+            
+            # Estrutura de análise compatível com DocumentationGenerator
+            analysis_results = {
+                'metadata': {
+                    'project_name': project_name,
+                    'project_path': str(project_path),
+                    'analysis_date': datetime.now().isoformat(),
+                    'analyzer_version': self.version,
+                    'analysis_type': 'structured_legacy_analysis_fallback'
+                },
+                'files_analyzed': {
+                    'total_files': len(delphi_files),
+                    'files': []
+                },
+                'code_structure': {
+                    'functions': [],
+                    'classes': [],
+                    'forms': [],
+                    'data_modules': [],
+                    'units': []
+                },
+                'business_logic': {
+                    'rules': [],
+                    'patterns': [],
+                    'workflows': []
+                },
+                'database_elements': {
+                    'connections': [],
+                    'queries': [],
+                    'tables_referenced': []
+                },
+                'ui_components': {
+                    'forms': [],
+                    'controls': [],
+                    'menus': []
+                },
+                'dependencies': {
+                    'internal_units': [],
+                    'external_libraries': [],
+                    'system_units': []
+                },
+                'complexity_metrics': {
+                    'total_lines': 0,
+                    'function_count': 0,
+                    'class_count': 0,
+                    'estimated_complexity': 'baixa'
+                }
+            }
+            
+            # Analisa cada arquivo de forma estruturada
+            total_lines = 0
+            for file_path in delphi_files:
+                try:
+                    file_analysis = self._analyze_file_structured(file_path, project_name)
+                    if file_analysis:
+                        self._merge_structured_analysis(analysis_results, file_analysis)
+                        total_lines += file_analysis.get('lines_count', 0)
+                except Exception as e:
+                    logger.warning(f"⚠️ Erro ao analisar {file_path}: {str(e)}")
+                    continue
+            
+            # Atualiza métricas de complexidade
+            analysis_results['complexity_metrics']['total_lines'] = total_lines
+            analysis_results['complexity_metrics']['function_count'] = len(analysis_results['code_structure']['functions'])
+            analysis_results['complexity_metrics']['class_count'] = len(analysis_results['code_structure']['classes'])
+            analysis_results['complexity_metrics']['estimated_complexity'] = self._estimate_project_complexity(analysis_results)
+            
+            # Adiciona informações específicas para documentação
+            analysis_results['documentation_hints'] = self._generate_documentation_hints(analysis_results)
+            
+            # Gera correlações para modernização
+            analysis_results['modernization_suggestions'] = self._generate_modernization_suggestions(analysis_results)
+            
+            elapsed_time = time.time() - start_time
+            logger.info(f"✅ Análise estruturada (fallback) concluída em {elapsed_time:.2f}s")
+            logger.info(f"📊 Resultados: {len(analysis_results['files_analyzed']['files'])} arquivos, "
+                       f"{len(analysis_results['code_structure']['functions'])} funções, "
+                       f"{len(analysis_results['code_structure']['classes'])} classes")
+            
+            return analysis_results
+            
+        except Exception as e:
+            logger.error(f"❌ Erro na análise estruturada (fallback): {str(e)}")
+            return self._create_empty_analysis_result(project_name, project_path)
+    
+    def _analyze_file_structured(self, file_path: Path, project_name: str) -> Dict[str, Any]:
+        """Análise estruturada de um arquivo individual"""
+        try:
+            with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
+                content = f.read()
+            
+            file_result = {
+                'file_path': str(file_path),
+                'file_name': file_path.name,
+                'file_type': file_path.suffix,
+                'lines_count': len(content.splitlines()),
+                'functions': [],
+                'classes': [],
+                'forms': [],
+                'units_referenced': [],
+                'database_elements': []
+            }
+            
+            # Análise de funções e procedimentos
+            function_patterns = [
+                r'function\s+(\w+)\s*\([^)]*\)\s*:\s*(\w+);',
+                r'procedure\s+(\w+)\s*\([^)]*\);'
+            ]
+            
+            for pattern in function_patterns:
+                matches = re.finditer(pattern, content, re.IGNORECASE | re.MULTILINE)
+                for match in matches:
+                    func_name = match.group(1)
+                    func_type = 'function' if 'function' in match.group(0).lower() else 'procedure'
+                    file_result['functions'].append({
+                        'name': func_name,
+                        'type': func_type,
+                        'file': file_path.name
+                    })
+            
+            # Análise de classes
+            class_pattern = r'type\s+(\w+)\s*=\s*class\s*\(([^)]*)\)'
+            class_matches = re.finditer(class_pattern, content, re.IGNORECASE | re.MULTILINE)
+            for match in class_matches:
+                class_name = match.group(1)
+                parent_class = match.group(2) if match.group(2) else 'TObject'
+                file_result['classes'].append({
+                    'name': class_name,
+                    'parent': parent_class,
+                    'file': file_path.name
+                })
+            
+            # Análise de forms (se for .dfm)
+            if file_path.suffix.lower() == '.dfm':
+                form_pattern = r'object\s+(\w+):\s*(\w+)'
+                form_matches = re.finditer(form_pattern, content, re.IGNORECASE)
+                for match in form_matches:
+                    form_name = match.group(1)
+                    form_type = match.group(2)
+                    file_result['forms'].append({
+                        'name': form_name,
+                        'type': form_type,
+                        'file': file_path.name
+                    })
+            
+            # Análise de units referenciadas
+            uses_pattern = r'uses\s+(.*?);'
+            uses_matches = re.finditer(uses_pattern, content, re.IGNORECASE | re.DOTALL)
+            for match in uses_matches:
+                units_text = match.group(1)
+                units = [unit.strip() for unit in units_text.replace('\n', '').replace('\r', '').split(',')]
+                file_result['units_referenced'].extend(units)
+            
+            # Análise básica de elementos de banco de dados
+            db_keywords = ['TDataSet', 'TQuery', 'TTable', 'TStoredProc', 'TDataSource', 'SQL', 'SELECT', 'INSERT', 'UPDATE', 'DELETE']
+            for keyword in db_keywords:
+                if keyword.lower() in content.lower():
+                    file_result['database_elements'].append({
+                        'type': keyword,
+                        'file': file_path.name,
+                        'context': 'detected'
+                    })
+            
+            return file_result
+            
+        except Exception as e:
+            logger.warning(f"⚠️ Erro ao analisar arquivo {file_path}: {str(e)}")
+            return None
+    
+    def _merge_structured_analysis(self, main_analysis: Dict[str, Any], file_analysis: Dict[str, Any]):
+        """Mescla resultado de análise de arquivo com análise principal"""
+        if not file_analysis:
+            return
+        
+        # Adiciona arquivo à lista
+        main_analysis['files_analyzed']['files'].append({
+            'path': file_analysis['file_path'],
+            'name': file_analysis['file_name'],
+            'type': file_analysis['file_type'],
+            'lines': file_analysis['lines_count']
+        })
+        
+        # Mescla funções
+        main_analysis['code_structure']['functions'].extend(file_analysis['functions'])
+        
+        # Mescla classes
+        main_analysis['code_structure']['classes'].extend(file_analysis['classes'])
+        
+        # Mescla forms
+        main_analysis['code_structure']['forms'].extend(file_analysis['forms'])
+        
+        # Mescla units
+        for unit in file_analysis['units_referenced']:
+            if unit and unit not in main_analysis['dependencies']['internal_units']:
+                if any(sys_unit in unit.lower() for sys_unit in ['system', 'sysutils', 'classes', 'controls', 'forms', 'windows']):
+                    main_analysis['dependencies']['system_units'].append(unit)
+                else:
+                    main_analysis['dependencies']['internal_units'].append(unit)
+        
+        # Mescla elementos de banco
+        main_analysis['database_elements']['queries'].extend(file_analysis['database_elements'])
+    
+    def _estimate_project_complexity(self, analysis: Dict[str, Any]) -> str:
+        """Estima complexidade do projeto baseada em métricas"""
+        total_lines = analysis['complexity_metrics']['total_lines']
+        function_count = analysis['complexity_metrics']['function_count']
+        class_count = analysis['complexity_metrics']['class_count']
+        
+        if total_lines > 50000 or function_count > 500 or class_count > 100:
+            return 'alta'
+        elif total_lines > 10000 or function_count > 100 or class_count > 20:
+            return 'média'
+        else:
+            return 'baixa'
+    
+    def _generate_documentation_hints(self, analysis: Dict[str, Any]) -> Dict[str, Any]:
+        """Gera dicas para documentação baseada na análise"""
+        return {
+            'suggested_sections': [
+                'Arquitetura Geral',
+                'Módulos Principais',
+                'Fluxo de Dados',
+                'Interface do Usuário',
+                'Integração com Banco de Dados'
+            ],
+            'key_components': [f['name'] for f in analysis['code_structure']['forms'][:5]],
+            'main_functions': [f['name'] for f in analysis['code_structure']['functions'][:10]],
+            'complexity_level': analysis['complexity_metrics']['estimated_complexity']
+        }
+    
+    def _generate_modernization_suggestions(self, analysis: Dict[str, Any]) -> Dict[str, Any]:
+        """Gera sugestões de modernização baseada na análise"""
+        suggestions = {
+            'priority_areas': [],
+            'technology_migration': [],
+            'architecture_improvements': []
+        }
+        
+        # Baseado na complexidade
+        complexity = analysis['complexity_metrics']['estimated_complexity']
+        if complexity == 'alta':
+            suggestions['priority_areas'].append('Refatoração em módulos menores')
+            suggestions['architecture_improvements'].append('Implementar padrão MVC')
+        
+        # Baseado em elementos de banco
+        if analysis['database_elements']['queries']:
+            suggestions['technology_migration'].append('Migrar para ORM moderno')
+            suggestions['priority_areas'].append('Revisar queries SQL')
+        
+        # Baseado em forms
+        if len(analysis['code_structure']['forms']) > 10:
+            suggestions['priority_areas'].append('Modernizar interface do usuário')
+            suggestions['technology_migration'].append('Considerar framework web')
+        
+        return suggestions
+    
+    def _analyze_file_structured(self, file_path: Path, project_name: str) -> Optional[Dict[str, Any]]:
+        """Analisa um arquivo de forma estruturada para compatibilidade com DocumentationGenerator"""
+        try:
+            if not file_path.exists() or not file_path.is_file():
                 return None
             
-            # Analisa conteúdo
-            analysis = self._analyze_file_content_optimized(content, file_path)
+            # Lê o conteúdo do arquivo
+            try:
+                with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
+                    content = f.read()
+            except Exception as e:
+                logger.warning(f"⚠️ Erro ao ler arquivo {file_path}: {str(e)}")
+                try:
+                    # Tenta com encoding latin-1 como fallback
+                    with open(file_path, 'r', encoding='latin-1', errors='ignore') as f:
+                        content = f.read()
+                except:
+                    return None
             
-            # Salva no cache
-            cache_manager.set(cache_key, analysis)
+            if not content.strip():
+                return None
+            
+            lines = content.splitlines()
+            file_info = {
+                'filename': file_path.name,
+                'filepath': str(file_path),
+                'file_type': file_path.suffix.lower(),
+                'size': len(content),
+                'lines_count': len(lines),
+                'functions': [],
+                'classes': [],
+                'units_referenced': [],
+                'database_operations': [],
+                'ui_elements': [],
+                'business_rules': []
+            }
+            
+            # Análise específica por tipo de arquivo
+            if file_path.suffix.lower() == '.pas':
+                self._analyze_pascal_unit_structured(content, file_info, project_name)
+            elif file_path.suffix.lower() == '.dfm':
+                self._analyze_form_file_structured(content, file_info)
+            elif file_path.suffix.lower() == '.dpr':
+                self._analyze_project_file_structured(content, file_info)
+            
+            return file_info
+            
+        except Exception as e:
+            logger.error(f"❌ Erro ao analisar arquivo estruturado {file_path}: {str(e)}")
+            return None
+    
+    def _analyze_pascal_unit_structured(self, content: str, file_info: Dict[str, Any], project_name: str):
+        """Analisa unit Pascal de forma estruturada"""
+        try:
+            # Extrai funções e procedimentos
+            functions = self._extract_functions_structured(content, file_info['filename'])
+            file_info['functions'] = functions
+            
+            # Extrai classes
+            classes = self._extract_classes_structured(content, file_info['filename'])
+            file_info['classes'] = classes
+            
+            # Extrai uses (dependências)
+            uses = self._extract_uses_section(content)
+            file_info['units_referenced'] = uses
+            
+            # Identifica operações de banco de dados
+            db_ops = self._extract_database_operations_structured(content)
+            file_info['database_operations'] = db_ops
+            
+            # Identifica regras de negócio
+            business_rules = self._extract_business_rules_structured(content, project_name)
+            file_info['business_rules'] = business_rules
+            
+        except Exception as e:
+            logger.warning(f"⚠️ Erro na análise estruturada do Pascal: {str(e)}")
+    
+    def _extract_functions_structured(self, content: str, filename: str) -> List[Dict[str, Any]]:
+        """Extrai funções e procedimentos de forma estruturada MELHORADA"""
+        functions = []
+        
+        # Padrões melhorados para funções e procedimentos
+        function_pattern = r'^\s*(function|procedure)\s+(\w+(?:\.\w+)?)\s*(?:\((.*?)\))?\s*(?::\s*(\w+(?:\.\w+)?))?\s*;'
+        
+        # Padrão para métodos de classe
+        method_pattern = r'^\s*(function|procedure)\s+T\w+\.(\w+)\s*(?:\((.*?)\))?\s*(?::\s*(\w+(?:\.\w+)?))?\s*;'
+        
+        # Padrão para eventos
+        event_pattern = r'^\s*procedure\s+(\w+(?:Click|Change|Enter|Exit|Show|Close|Create|Destroy|Paint|Resize|KeyPress|KeyDown|KeyUp))\s*\('
+        
+        lines = content.splitlines()
+        for i, line in enumerate(lines):
+            # Verifica método de classe primeiro
+            method_match = re.match(method_pattern, line, re.IGNORECASE)
+            if method_match:
+                func_type = method_match.group(1).lower()
+                func_name = method_match.group(2)
+                parameters_str = method_match.group(3) or ''
+                return_type = method_match.group(4) or ''
+                
+                # Identifica se é evento
+                is_event = bool(re.search(r'(Click|Change|Enter|Exit|Show|Close|Create|Destroy|Paint|Resize|KeyPress|KeyDown|KeyUp)', func_name, re.IGNORECASE))
+                
+                functions.append({
+                    'name': func_name,
+                    'type': func_type,
+                    'category': 'event' if is_event else 'method',
+                    'parameters': self._parse_parameters(parameters_str),
+                    'return_type': return_type,
+                    'line_number': i + 1,
+                    'is_class_method': True,
+                    'is_event_handler': is_event
+                })
+                continue
+            
+            # Verifica função/procedimento normal
+            func_match = re.match(function_pattern, line, re.IGNORECASE)
+            if func_match:
+                func_type = func_match.group(1).lower()
+                func_name = func_match.group(2)
+                parameters_str = func_match.group(3) or ''
+                return_type = func_match.group(4) or ''
+                
+                # Identifica categoria da função
+                category = 'function'
+                if func_type == 'procedure':
+                    category = 'procedure'
+                if 'Create' in func_name or 'Initialize' in func_name:
+                    category = 'constructor'
+                elif 'Destroy' in func_name or 'Free' in func_name:
+                    category = 'destructor'
+                elif func_name.startswith('Get') or func_name.startswith('Set'):
+                    category = 'property_accessor'
+                
+                functions.append({
+                    'name': func_name,
+                    'type': func_type,
+                    'category': category,
+                    'parameters': self._parse_parameters(parameters_str),
+                    'return_type': return_type,
+                    'line_number': i + 1,
+                    'is_class_method': False,
+                    'is_event_handler': False
+                })
+        
+        return functions
+    
+    def _parse_parameters(self, parameters_str: str) -> List[Dict[str, Any]]:
+        """Parse melhorado de parâmetros"""
+        parameters = []
+        if not parameters_str:
+            return parameters
+            
+        param_parts = parameters_str.split(';')
+        for param_part in param_parts:
+            param_part = param_part.strip()
+            if ':' in param_part:
+                # Identifica modificadores (var, const, out)
+                modifier = ''
+                if param_part.lower().startswith(('var ', 'const ', 'out ')):
+                    modifier, param_part = param_part.split(' ', 1)
+                    modifier = modifier.lower()
+                
+                names_part, type_part = param_part.rsplit(':', 1)
+                param_names = [name.strip() for name in names_part.split(',')]
+                param_type = type_part.strip()
+                
+                for param_name in param_names:
+                    parameters.append({
+                        'name': param_name,
+                        'type': param_type,
+                        'modifier': modifier
+                    })
+        
+        return parameters
+    
+    def _extract_classes_structured(self, content: str, filename: str) -> List[Dict[str, Any]]:
+        """Extrai classes de forma estruturada MELHORADA"""
+        classes = []
+        
+        # Padrões melhorados para classes
+        class_pattern = r'^\s*(\w+)\s*=\s*class\s*(?:\(([^)]+)\))?\s*'
+        
+        lines = content.splitlines()
+        
+        for i, line in enumerate(lines):
+            match = re.match(class_pattern, line, re.IGNORECASE)
+            if match:
+                class_name = match.group(1)
+                parent_class = match.group(2) or 'TObject'
+                
+                # Identifica tipo de classe
+                class_type = 'class'
+                if 'TForm' in parent_class:
+                    class_type = 'form'
+                elif 'TDataModule' in parent_class:
+                    class_type = 'datamodule'
+                elif 'TFrame' in parent_class:
+                    class_type = 'frame'
+                elif 'Exception' in class_name or 'Error' in class_name:
+                    class_type = 'exception'
+                
+                class_info = {
+                    'name': class_name,
+                    'parent_class': parent_class,
+                    'class_type': class_type,
+                    'methods': [],
+                    'properties': [],
+                    'fields': [],
+                    'events': [],
+                    'line_number': i + 1,
+                    'source_file': filename,
+                    'is_abstract': False,
+                    'interfaces': []
+                }
+                
+                # Extrai membros da classe
+                self._extract_class_members_enhanced(content, i, class_info)
+                classes.append(class_info)
+        
+        return classes
+    
+    def _extract_class_members_enhanced(self, content: str, class_start_line: int, class_info: Dict[str, Any]):
+        """Extrai membros de uma classe de forma melhorada"""
+        lines = content.splitlines()
+        in_private = False
+        in_protected = False
+        in_public = False
+        in_published = False
+        current_visibility = 'private'
+        
+        for i in range(class_start_line + 1, len(lines)):
+            line = lines[i].strip()
+            line_lower = line.lower()
+            
+            # Identifica mudanças de visibilidade
+            if line_lower.startswith('private'):
+                current_visibility = 'private'
+                in_private = True
+                continue
+            elif line_lower.startswith('protected'):
+                current_visibility = 'protected'
+                in_protected = True
+                continue
+            elif line_lower.startswith('public'):
+                current_visibility = 'public'
+                in_public = True
+                continue
+            elif line_lower.startswith('published'):
+                current_visibility = 'published'
+                in_published = True
+                continue
+            
+            # Para quando encontra "end;" da classe
+            if line_lower == 'end;' and not line.startswith(' '):
+                break
+            
+            # Extrai propriedades
+            prop_match = re.match(r'property\s+(\w+)\s*(?::\s*(\w+))?\s*(?:read\s+(\w+))?\s*(?:write\s+(\w+))?', line, re.IGNORECASE)
+            if prop_match:
+                prop_name = prop_match.group(1)
+                prop_type = prop_match.group(2) or 'Variant'
+                read_method = prop_match.group(3)
+                write_method = prop_match.group(4)
+                
+                class_info['properties'].append({
+                    'name': prop_name,
+                    'type': prop_type,
+                    'read_method': read_method,
+                    'write_method': write_method,
+                    'visibility': current_visibility,
+                    'line_number': i + 1
+                })
+                continue
+            
+            # Extrai campos (fields)
+            field_match = re.match(r'(\w+)\s*:\s*(\w+(?:\[\w+\])?)\s*;', line, re.IGNORECASE)
+            if field_match and not line_lower.startswith(('function', 'procedure', 'property')):
+                field_name = field_match.group(1)
+                field_type = field_match.group(2)
+                
+                class_info['fields'].append({
+                    'name': field_name,
+                    'type': field_type,
+                    'visibility': current_visibility,
+                    'line_number': i + 1
+                })
+                continue
+            
+            # Extrai declarações de métodos
+            method_match = re.match(r'(function|procedure)\s+(\w+)', line, re.IGNORECASE)
+            if method_match:
+                method_type = method_match.group(1).lower()
+                method_name = method_match.group(2)
+                
+                # Identifica se é evento
+                is_event = bool(re.search(r'(Click|Change|Enter|Exit|Show|Close|Create|Destroy|Paint|Resize|KeyPress|KeyDown|KeyUp)', method_name, re.IGNORECASE))
+                
+                method_info = {
+                    'name': method_name,
+                    'type': method_type,
+                    'visibility': current_visibility,
+                    'is_event_handler': is_event,
+                    'line_number': i + 1
+                }
+                
+                if is_event:
+                    class_info['events'].append(method_info)
+                else:
+                    class_info['methods'].append(method_info)
+    
+    def _analyze_project_hierarchy(self, project_path: str) -> Dict[str, Any]:
+        """Analisa a hierarquia e estrutura do projeto MELHORADA"""
+        hierarchy = {
+            'root_files': [],
+            'subdirectories': {},
+            'main_units': [],
+            'form_units': [],
+            'datamodule_units': [],
+            'utility_units': [],
+            'total_files': 0,
+            'file_types': {}
+        }
+        
+        try:
+            for root, dirs, files in os.walk(project_path):
+                rel_path = os.path.relpath(root, project_path)
+                
+                for file in files:
+                    file_path = os.path.join(root, file)
+                    file_ext = Path(file).suffix.lower()
+                    
+                    # Conta tipos de arquivo
+                    if file_ext not in hierarchy['file_types']:
+                        hierarchy['file_types'][file_ext] = 0
+                    hierarchy['file_types'][file_ext] += 1
+                    hierarchy['total_files'] += 1
+                    
+                    if file.endswith('.pas'):
+                        try:
+                            with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
+                                content = f.read()
+                            
+                            # Classifica o tipo de unit baseado no conteúdo
+                            if 'TForm' in content or ': TForm' in content:
+                                hierarchy['form_units'].append({
+                                    'name': file,
+                                    'path': rel_path,
+                                    'type': 'form'
+                                })
+                            elif 'TDataModule' in content or ': TDataModule' in content:
+                                hierarchy['datamodule_units'].append({
+                                    'name': file,
+                                    'path': rel_path,
+                                    'type': 'datamodule'
+                                })
+                            elif file.lower().endswith('main.pas') or 'program ' in content.lower():
+                                hierarchy['main_units'].append({
+                                    'name': file,
+                                    'path': rel_path,
+                                    'type': 'main'
+                                })
+                            else:
+                                hierarchy['utility_units'].append({
+                                    'name': file,
+                                    'path': rel_path,
+                                    'type': 'utility'
+                                })
+                                
+                        except Exception as e:
+                            logger.warning(f"⚠️ Erro ao analisar {file}: {e}")
+                    
+                    if rel_path == '.':  # Arquivo na raiz
+                        hierarchy['root_files'].append(file)
+                    else:
+                        if rel_path not in hierarchy['subdirectories']:
+                            hierarchy['subdirectories'][rel_path] = []
+                        hierarchy['subdirectories'][rel_path].append(file)
+        
+        except Exception as e:
+            logger.error(f"❌ Erro na análise de hierarquia: {e}")
+        
+        return hierarchy
+    
+    def _extract_uses_section(self, content: str) -> List[str]:
+        """Extrai seção uses"""
+        uses_units = []
+        
+        # Procura pela seção uses
+        uses_pattern = r'uses\s+(.*?);'
+        matches = re.findall(uses_pattern, content, re.IGNORECASE | re.DOTALL)
+        
+        for match in matches:
+            # Remove quebras de linha e espacos extras
+            units_text = re.sub(r'\s+', ' ', match.strip())
+            # Divide por vírgulas
+            units = [unit.strip() for unit in units_text.split(',')]
+            uses_units.extend(units)
+        
+        return list(set(uses_units))  # Remove duplicatas
+    
+    def _extract_database_operations_structured(self, content: str) -> List[Dict[str, Any]]:
+        """Extrai operações de banco de dados"""
+        db_operations = []
+        
+        # Padrões para identificar operações de BD
+        sql_patterns = [
+            r'(SELECT\s+.*?FROM\s+(\w+))',
+            r'(INSERT\s+INTO\s+(\w+))',
+            r'(UPDATE\s+(\w+)\s+SET)',
+            r'(DELETE\s+FROM\s+(\w+))'
+        ]
+        
+        for pattern in sql_patterns:
+            matches = re.finditer(pattern, content, re.IGNORECASE | re.DOTALL)
+            for match in matches:
+                operation = {
+                    'type': match.group(1).split()[0].upper(),
+                    'sql_snippet': match.group(1)[:100] + '...' if len(match.group(1)) > 100 else match.group(1),
+                    'table': match.group(2) if len(match.groups()) > 1 else 'unknown'
+                }
+                db_operations.append(operation)
+        
+        return db_operations
+    
+    def _extract_business_rules_structured(self, content: str, project_name: str) -> List[str]:
+        """Extrai regras de negócio identificáveis no código"""
+        business_rules = []
+        
+        # Procura por comentários que indicam regras de negócio
+        comment_patterns = [
+            r'//\s*(regra|rule|business|negócio|validação|validation).*',
+            r'\(\*\s*(regra|rule|business|negócio|validação|validation).*?\*\)',
+            r'{\s*(regra|rule|business|negócio|validação|validation).*?}'
+        ]
+        
+        for pattern in comment_patterns:
+            matches = re.finditer(pattern, content, re.IGNORECASE | re.DOTALL)
+            for match in matches:
+                rule_text = match.group(0).strip()
+                if len(rule_text) > 10:  # Ignora comentários muito pequenos
+                    business_rules.append(rule_text)
+        
+        # Procura por validações em código
+        validation_patterns = [
+            r'if\s+.*\s+then\s+raise\s+.*',
+            r'if\s+.*\s+then\s+ShowMessage\s*\(',
+            r'if\s+.*\s+then\s+MessageDlg\s*\('
+        ]
+        
+        for pattern in validation_patterns:
+            matches = re.finditer(pattern, content, re.IGNORECASE)
+            for match in matches:
+                validation = match.group(0).strip()
+                if len(validation) > 20:
+                    business_rules.append(f"Validação: {validation}")
+        
+        return business_rules[:10]  # Limita a 10 regras por arquivo
+    
+    def _merge_structured_analysis(self, analysis_results: Dict[str, Any], file_analysis: Dict[str, Any]):
+        """Combina análise de arquivo com resultado geral"""
+        # Adiciona arquivo à lista
+        analysis_results['files_analyzed']['files'].append({
+            'filename': file_analysis['filename'],
+            'filepath': file_analysis['filepath'],
+            'file_type': file_analysis['file_type'],
+            'size': file_analysis['size'],
+            'lines_count': file_analysis['lines_count'],
+            'functions': len(file_analysis['functions']),
+            'classes': len(file_analysis['classes'])
+        })
+        
+        # Adiciona funções ao resultado global
+        for func in file_analysis['functions']:
+            analysis_results['code_structure']['functions'].append(func)
+        
+        # Adiciona classes ao resultado global
+        for cls in file_analysis['classes']:
+            analysis_results['code_structure']['classes'].append(cls)
+        
+        # Adiciona regras de negócio
+        for rule in file_analysis['business_rules']:
+            analysis_results['business_logic']['rules'].append(rule)
+        
+        # Adiciona operações de banco
+        for db_op in file_analysis['database_operations']:
+            analysis_results['database_elements']['queries'].append(db_op)
+        
+        # Adiciona dependências
+        for unit in file_analysis['units_referenced']:
+            if unit not in analysis_results['dependencies']['internal_units']:
+                analysis_results['dependencies']['internal_units'].append(unit)
+    
+    def _estimate_project_complexity(self, analysis_results: Dict[str, Any]) -> str:
+        """Estima complexidade do projeto baseado nas métricas"""
+        total_lines = analysis_results['complexity_metrics']['total_lines']
+        function_count = analysis_results['complexity_metrics']['function_count']
+        class_count = analysis_results['complexity_metrics']['class_count']
+        
+        complexity_score = 0
+        
+        # Pontuação baseada em linhas de código
+        if total_lines > 10000:
+            complexity_score += 3
+        elif total_lines > 5000:
+            complexity_score += 2
+        elif total_lines > 1000:
+            complexity_score += 1
+        
+        # Pontuação baseada em número de funções
+        if function_count > 100:
+            complexity_score += 3
+        elif function_count > 50:
+            complexity_score += 2
+        elif function_count > 20:
+            complexity_score += 1
+        
+        # Pontuação baseada em número de classes
+        if class_count > 20:
+            complexity_score += 2
+        elif class_count > 10:
+            complexity_score += 1
+        
+        if complexity_score >= 6:
+            return 'alta'
+        elif complexity_score >= 3:
+            return 'média'
+        else:
+            return 'baixa'
+    
+    def _generate_documentation_hints(self, analysis_results: Dict[str, Any]) -> Dict[str, Any]:
+        """Gera dicas específicas para documentação baseada na análise"""
+        hints = {
+            'key_components': [],
+            'main_flows': [],
+            'critical_functions': [],
+            'business_highlights': []
+        }
+        
+        # Identifica componentes-chave
+        functions = analysis_results['code_structure']['functions']
+        if functions:
+            # Funções principais (com nomes sugestivos)
+            key_functions = [f for f in functions if any(keyword in f['name'].lower() 
+                           for keyword in ['main', 'principal', 'execute', 'process', 'calculate'])]
+            hints['key_components'] = [f['name'] for f in key_functions[:5]]
+        
+        # Identifica fluxos principais
+        forms = analysis_results['code_structure']['forms']
+        if forms:
+            hints['main_flows'] = [f"Formulário: {form['name']}" for form in forms[:3]]
+        
+        # Funções críticas
+        critical_functions = [f for f in functions if 'validate' in f['name'].lower() or 'check' in f['name'].lower()]
+        hints['critical_functions'] = [f['name'] for f in critical_functions[:5]]
+        
+        # Destaques de negócio
+        business_rules = analysis_results['business_logic']['rules']
+        hints['business_highlights'] = business_rules[:3]
+        
+        return hints
+    
+    def _generate_modernization_suggestions(self, analysis_results: Dict[str, Any]) -> Dict[str, Any]:
+        """Gera sugestões específicas para modernização"""
+        suggestions = {
+            'priority_components': [],
+            'architecture_recommendations': [],
+            'technology_mappings': [],
+            'migration_phases': []
+        }
+        
+        # Componentes prioritários baseados na análise
+        functions = analysis_results['code_structure']['functions']
+        classes = analysis_results['code_structure']['classes']
+        
+        if classes:
+            suggestions['priority_components'].append(f"Migrar {len(classes)} classes para Spring @Component")
+        
+        if functions:
+            db_functions = [f for f in functions if any(keyword in f['name'].lower() 
+                          for keyword in ['query', 'insert', 'update', 'delete', 'select'])]
+            if db_functions:
+                suggestions['priority_components'].append(f"Converter {len(db_functions)} operações DB para Spring Data JPA")
+        
+        # Recomendações de arquitetura
+        suggestions['architecture_recommendations'] = [
+            "Implementar padrão MVC com Spring Boot",
+            "Usar Spring Security para autenticação",
+            "Aplicar injeção de dependência"
+        ]
+        
+        return suggestions
+    
+    def _analyze_form_file_structured(self, content: str, file_info: Dict[str, Any]):
+        """Analisa arquivo de formulário (.dfm) de forma estruturada"""
+        try:
+            # Extrai informações do formulário
+            form_info = self._extract_form_info(content)
+            file_info['form_name'] = form_info.get('name', 'UnknownForm')
+            file_info['form_class'] = form_info.get('class', 'TForm')
+            
+            # Extrai controles do formulário
+            controls = self._extract_form_controls(content)
+            file_info['ui_elements'] = controls
+            
+            # Identifica eventos
+            events = self._extract_form_events(content)
+            file_info['events'] = events
+            
+        except Exception as e:
+            logger.warning(f"⚠️ Erro na análise do formulário: {str(e)}")
+    
+    def _analyze_project_file_structured(self, content: str, file_info: Dict[str, Any]):
+        """Analisa arquivo de projeto (.dpr) de forma estruturada"""
+        try:
+            # Extrai informações do projeto
+            project_info = self._extract_project_info(content)
+            file_info['project_type'] = project_info.get('type', 'application')
+            file_info['project_title'] = project_info.get('title', 'Unknown Project')
+            
+            # Extrai units usadas no projeto
+            project_uses = self._extract_uses_section(content)
+            file_info['units_referenced'] = project_uses
+            
+        except Exception as e:
+            logger.warning(f"⚠️ Erro na análise do arquivo de projeto: {str(e)}")
+    
+    def _extract_form_info(self, content: str) -> Dict[str, str]:
+        """Extrai informações básicas do formulário"""
+        form_info = {}
+        
+        # Procura pela declaração do objeto
+        object_match = re.search(r'object\s+(\w+):\s*(\w+)', content, re.IGNORECASE)
+        if object_match:
+            form_info['name'] = object_match.group(1)
+            form_info['class'] = object_match.group(2)
+        
+        return form_info
+    
+    def _extract_form_controls(self, content: str) -> List[Dict[str, Any]]:
+        """Extrai controles do formulário"""
+        controls = []
+        
+        # Padrão para controles (objetos aninhados)
+        control_pattern = r'object\s+(\w+):\s*(\w+)'
+        
+        matches = re.finditer(control_pattern, content, re.IGNORECASE)
+        for match in matches:
+            control_name = match.group(1)
+            control_class = match.group(2)
+            
+            # Evita duplicar o próprio formulário
+            if not control_class.startswith('TForm'):
+                controls.append({
+                    'name': control_name,
+                    'class': control_class,
+                    'type': self._classify_control_type(control_class)
+                })
+        
+        return controls
+    
+    def _classify_control_type(self, control_class: str) -> str:
+        """Classifica o tipo de controle baseado na classe"""
+        if control_class.startswith('TButton'):
+            return 'button'
+        elif control_class.startswith('TEdit'):
+            return 'input'
+        elif control_class.startswith('TLabel'):
+            return 'label'
+        elif control_class.startswith('TGrid') or control_class.startswith('TDBGrid'):
+            return 'grid'
+        elif control_class.startswith('TPanel'):
+            return 'container'
+        elif control_class.startswith('TMenu'):
+            return 'menu'
+        elif control_class.startswith('TComboBox'):
+            return 'dropdown'
+        elif control_class.startswith('TMemo'):
+            return 'textarea'
+        else:
+            return 'component'
+    
+    def _extract_form_events(self, content: str) -> List[str]:
+        """Extrai eventos do formulário"""
+        events = []
+        
+        # Procura por propriedades que terminam com event handlers
+        event_pattern = r'(\w+)\s*=\s*(\w+)'
+        
+        matches = re.finditer(event_pattern, content)
+        for match in matches:
+            property_name = match.group(1)
+            handler_name = match.group(2)
+            
+            # Identifica eventos comuns
+            if any(event_type in property_name.lower() for event_type in 
+                   ['onclick', 'onchange', 'onenter', 'onexit', 'onshow', 'onclose']):
+                events.append(f"{property_name}: {handler_name}")
+        
+        return events[:10]  # Limita a 10 eventos
+    
+    def _extract_project_info(self, content: str) -> Dict[str, str]:
+        """Extrai informações do arquivo de projeto"""
+        project_info = {}
+        
+        # Procura por declaração de programa
+        program_match = re.search(r'program\s+(\w+)', content, re.IGNORECASE)
+        if program_match:
+            project_info['name'] = program_match.group(1)
+            project_info['type'] = 'application'
+        
+        # Procura por library
+        library_match = re.search(r'library\s+(\w+)', content, re.IGNORECASE)
+        if library_match:
+            project_info['name'] = library_match.group(1)
+            project_info['type'] = 'library'
+        
+        return project_info
+    
+    def _analyze_single_file(self, file_path: Path) -> Optional[Dict[str, Any]]:
+        """Analisa um único arquivo Delphi"""
+        try:
+            if not file_path.exists() or not file_path.is_file():
+                return None
+            
+            # Lê o conteúdo do arquivo
+            try:
+                with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
+                    content = f.read()
+            except Exception as e:
+                logger.warning(f"⚠️ Erro ao ler arquivo {file_path}: {str(e)}")
+                return None
+            
+            if not content.strip():
+                return None
+            
+            # Analisa o conteúdo baseado na extensão do arquivo
+            analysis = self._analyze_file_content(content, file_path)
             
             return analysis
             
         except Exception as e:
-            logger.error(f"❌ Erro analisando arquivo {file_path}: {str(e)}")
+            logger.error(f"❌ Erro ao analisar arquivo {file_path}: {str(e)}")
             return None
     
-    def _analyze_file_content_optimized(self, content: str, file_path: Path) -> Dict[str, Any]:
-        """Analisa conteúdo do arquivo de forma otimizada"""
-        # Implementação otimizada da análise
+    def _analyze_file_content(self, content: str, file_path: Path) -> Dict[str, Any]:
+        """Analisa conteúdo do arquivo baseado no tipo"""
+        file_extension = file_path.suffix.lower()
+        
+        analysis = {
+            'file_path': str(file_path),
+            'file_name': file_path.name,
+            'file_type': file_extension,
+            'size': len(content),
+            'lines': len(content.splitlines())
+        }
+        
+        # Análise específica por tipo de arquivo
+        if file_extension == '.pas':
+            analysis.update(self._analyze_pascal_unit(content))
+        elif file_extension == '.dfm':
+            analysis.update(self._analyze_form_file(content))
+        elif file_extension == '.dpr':
+            analysis.update(self._analyze_project_file(content))
+        elif file_extension == '.dpk':
+            analysis.update(self._analyze_package_file(content))
+        
+        return analysis
+    
+    def _merge_file_analysis(self, results: Dict[str, Any], file_analysis: Dict[str, Any]):
+        """Combina análise de arquivo com resultados gerais"""
+        try:
+            file_type = file_analysis.get('file_type', '')
+            file_name = file_analysis.get('file_name', '')
+            
+            if file_type == '.pas':
+                # Adiciona unit
+                results['units'][file_name] = file_analysis
+                
+                # Se contém form, adiciona aos forms
+                if file_analysis.get('has_form', False):
+                    results['forms'][file_name] = file_analysis
+                
+                # Se é datamodule, adiciona aos data_modules
+                if file_analysis.get('is_datamodule', False):
+                    results['data_modules'][file_name] = file_analysis
+                    
+            elif file_type == '.dfm':
+                # Arquivos de form
+                results['forms'][file_name] = file_analysis
+                
+        except Exception as e:
+            logger.warning(f"⚠️ Erro ao combinar análise: {str(e)}")
+    
+    def _generate_summary(self, analysis_results: Dict[str, Any]) -> Dict[str, Any]:
+        """Gera resumo da análise"""
+        try:
+            return {
+                'total_units': len(analysis_results.get('units', {})),
+                'total_forms': len(analysis_results.get('forms', {})),
+                'total_datamodules': len(analysis_results.get('data_modules', {})),
+                'total_files': analysis_results.get('metadata', {}).get('total_files', 0),
+                'main_technologies': ['Delphi', 'Pascal', 'VCL'],
+                'analysis_complete': True
+            }
+        except Exception as e:
+            logger.error(f"❌ Erro ao gerar resumo: {str(e)}")
+            return {'analysis_complete': False, 'error': str(e)}
         analysis = {
             'file_path': str(file_path),
             'file_size': len(content),
@@ -1895,3 +3810,448 @@ class LegacyProjectAnalyzer:
                 'forms': [],
                 'data_modules': []
             }
+    
+    def _analyze_pascal_unit(self, content: str) -> Dict[str, Any]:
+        """Analisa uma unit Pascal/Delphi"""
+        try:
+            analysis = {
+                'type': 'pascal_unit',
+                'has_interface': 'interface' in content.lower(),
+                'has_implementation': 'implementation' in content.lower(),
+                'classes': [],
+                'procedures': [],
+                'functions': [],
+                'uses_units': [],
+                'constants': [],
+                'variables': [],
+                'complexity': {},
+                'is_form': False,
+                'is_datamodule': False
+            }
+            
+            # Detecta se é form ou datamodule
+            content_lower = content.lower()
+            if 'tform' in content_lower or ': tform' in content_lower:
+                analysis['is_form'] = True
+                analysis['has_form'] = True
+            if 'tdatamodule' in content_lower or ': tdatamodule' in content_lower:
+                analysis['is_datamodule'] = True
+            
+            # Extrai uses
+            analysis['uses_units'] = self._extract_uses_clause(content)
+            
+            # Extrai classes
+            analysis['classes'] = self._extract_classes(content)
+            
+            # Extrai procedures e functions
+            analysis['procedures'] = self._extract_procedures(content)
+            analysis['functions'] = self._extract_functions(content)
+            
+            # Calcula complexidade
+            analysis['complexity'] = self._calculate_complexity(content)
+            
+            return analysis
+            
+        except Exception as e:
+            logger.error(f"Erro ao analisar unit Pascal: {str(e)}")
+            return {'type': 'pascal_unit', 'error': str(e)}
+    
+    def _analyze_form_file(self, content: str) -> Dict[str, Any]:
+        """Analisa arquivo .dfm (form)"""
+        try:
+            analysis = {
+                'type': 'form_file',
+                'form_class': '',
+                'components': [],
+                'properties': {},
+                'events': []
+            }
+            
+            # Extrai nome da classe do form
+            class_match = re.search(r'object\s+(\w+):\s*(\w+)', content, re.IGNORECASE)
+            if class_match:
+                analysis['form_name'] = class_match.group(1)
+                analysis['form_class'] = class_match.group(2)
+            
+            # Extrai componentes
+            component_pattern = r'object\s+(\w+):\s*(\w+)'
+            components = re.findall(component_pattern, content, re.IGNORECASE)
+            analysis['components'] = [{'name': comp[0], 'type': comp[1]} for comp in components]
+            
+            # Extrai eventos (OnClick, OnShow, etc.)
+            event_pattern = r'(\w+)\s*=\s*(\w+)'
+            events = re.findall(event_pattern, content)
+            analysis['events'] = [{'property': evt[0], 'handler': evt[1]} for evt in events if evt[0].startswith('On')]
+            
+            return analysis
+            
+        except Exception as e:
+            logger.error(f"Erro ao analisar form file: {str(e)}")
+            return {'type': 'form_file', 'error': str(e)}
+    
+    def _analyze_project_file(self, content: str) -> Dict[str, Any]:
+        """Analisa arquivo .dpr (projeto)"""
+        try:
+            analysis = {
+                'type': 'project_file',
+                'program_name': '',
+                'uses_units': [],
+                'forms': [],
+                'main_form': ''
+            }
+            
+            # Extrai nome do programa
+            program_match = re.search(r'program\s+(\w+)', content, re.IGNORECASE)
+            if program_match:
+                analysis['program_name'] = program_match.group(1)
+            
+            # Extrai uses
+            analysis['uses_units'] = self._extract_uses_clause(content)
+            
+            # Extrai forms criados
+            form_pattern = r'Application\.CreateForm\((\w+),\s*(\w+)\)'
+            forms = re.findall(form_pattern, content, re.IGNORECASE)
+            analysis['forms'] = [{'class': form[0], 'variable': form[1]} for form in forms]
+            
+            # Detecta main form
+            if analysis['forms']:
+                analysis['main_form'] = analysis['forms'][0]['variable']
+            
+            return analysis
+            
+        except Exception as e:
+            logger.error(f"Erro ao analisar project file: {str(e)}")
+            return {'type': 'project_file', 'error': str(e)}
+    
+    def _analyze_package_file(self, content: str) -> Dict[str, Any]:
+        """Analisa arquivo .dpk (package)"""
+        try:
+            analysis = {
+                'type': 'package_file',
+                'package_name': '',
+                'requires': [],
+                'contains': []
+            }
+            
+            # Extrai nome do package
+            package_match = re.search(r'package\s+(\w+)', content, re.IGNORECASE)
+            if package_match:
+                analysis['package_name'] = package_match.group(1)
+            
+            # Extrai requires
+            requires_match = re.search(r'requires\s+(.*?);', content, re.IGNORECASE | re.DOTALL)
+            if requires_match:
+                requires_text = requires_match.group(1)
+                analysis['requires'] = [req.strip() for req in requires_text.split(',')]
+            
+            # Extrai contains
+            contains_match = re.search(r'contains\s+(.*?);', content, re.IGNORECASE | re.DOTALL)
+            if contains_match:
+                contains_text = contains_match.group(1)
+                analysis['contains'] = [cont.strip() for cont in contains_text.split(',')]
+            
+            return analysis
+            
+        except Exception as e:
+            logger.error(f"Erro ao analisar package file: {str(e)}")
+            return {'type': 'package_file', 'error': str(e)}
+    
+    def _extract_uses_clause(self, content: str) -> List[str]:
+        """Extrai unidades da cláusula uses"""
+        try:
+            uses_units = []
+            
+            # Padrão para capturar uses clause
+            uses_pattern = r'uses\s+(.*?);'
+            matches = re.finditer(uses_pattern, content, re.IGNORECASE | re.DOTALL)
+            
+            for match in matches:
+                units_text = match.group(1)
+                # Remove comentários e espaços
+                units_text = re.sub(r'\{[^}]*\}', '', units_text)
+                units_text = re.sub(r'//.*$', '', units_text, flags=re.MULTILINE)
+                units_text = re.sub(r'\(\*.*?\*\)', '', units_text, re.DOTALL)
+                
+                # Separa por vírgula e limpa
+                units = [unit.strip() for unit in units_text.split(',') if unit.strip()]
+                uses_units.extend(units)
+            
+            return list(set(uses_units))  # Remove duplicatas
+            
+        except Exception as e:
+            logger.error(f"Erro ao extrair uses clause: {str(e)}")
+            return []
+    
+    def _extract_classes(self, content: str) -> List[Dict[str, Any]]:
+        """Extrai classes do código Pascal"""
+        try:
+            classes = []
+            
+            # Padrão para capturar declarações de classe
+            class_pattern = r'(\w+)\s*=\s*class\s*(?:\(([^)]+)\))?\s*(.*?)end;'
+            matches = re.finditer(class_pattern, content, re.IGNORECASE | re.DOTALL)
+            
+            for match in matches:
+                class_name = match.group(1)
+                parent_class = match.group(2) if match.group(2) else ''
+                class_body = match.group(3) if match.group(3) else ''
+                
+                class_info = {
+                    'name': class_name,
+                    'parent': parent_class.strip() if parent_class else '',
+                    'methods': self._extract_methods_from_class(class_body),
+                    'properties': self._extract_properties_from_class(class_body),
+                    'is_form': 'tform' in parent_class.lower() if parent_class else False,
+                    'is_datamodule': 'tdatamodule' in parent_class.lower() if parent_class else False
+                }
+                
+                classes.append(class_info)
+            
+            return classes
+            
+        except Exception as e:
+            logger.error(f"Erro ao extrair classes: {str(e)}")
+            return []
+    
+    def _extract_procedures(self, content: str) -> List[Dict[str, Any]]:
+        """Extrai procedures do código Pascal"""
+        try:
+            procedures = []
+            
+            # Padrão para capturar procedures
+            proc_pattern = r'procedure\s+(\w+(?:\.\w+)?)\s*(?:\((.*?)\))?\s*;'
+            matches = re.finditer(proc_pattern, content, re.IGNORECASE)
+            
+            for match in matches:
+                proc_name = match.group(1)
+                params = match.group(2) if match.group(2) else ''
+                
+                proc_info = {
+                    'name': proc_name,
+                    'parameters': self._parse_parameters(params),
+                    'type': 'procedure',
+                    'visibility': self._determine_visibility(content, match.start())
+                }
+                
+                procedures.append(proc_info)
+            
+            return procedures
+            
+        except Exception as e:
+            logger.error(f"Erro ao extrair procedures: {str(e)}")
+            return []
+    
+    def _extract_functions(self, content: str) -> List[Dict[str, Any]]:
+        """Extrai functions do código Pascal"""
+        try:
+            functions = []
+            
+            # Padrão para capturar functions
+            func_pattern = r'function\s+(\w+(?:\.\w+)?)\s*(?:\((.*?)\))?\s*:\s*(\w+)\s*;'
+            matches = re.finditer(func_pattern, content, re.IGNORECASE)
+            
+            for match in matches:
+                func_name = match.group(1)
+                params = match.group(2) if match.group(2) else ''
+                return_type = match.group(3)
+                
+                func_info = {
+                    'name': func_name,
+                    'parameters': self._parse_parameters(params),
+                    'return_type': return_type,
+                    'type': 'function',
+                    'visibility': self._determine_visibility(content, match.start())
+                }
+                
+                functions.append(func_info)
+            
+            return functions
+            
+        except Exception as e:
+            logger.error(f"Erro ao extrair functions: {str(e)}")
+            return []
+    
+    def _extract_methods_from_class(self, class_body: str) -> List[Dict[str, Any]]:
+        """Extrai métodos de uma classe"""
+        try:
+            methods = []
+            
+            # Extrai procedures da classe
+            proc_pattern = r'procedure\s+(\w+)\s*(?:\((.*?)\))?\s*;'
+            proc_matches = re.finditer(proc_pattern, class_body, re.IGNORECASE)
+            
+            for match in proc_matches:
+                method_info = {
+                    'name': match.group(1),
+                    'parameters': self._parse_parameters(match.group(2) if match.group(2) else ''),
+                    'type': 'procedure',
+                    'is_event_handler': match.group(1).lower().startswith('on')
+                }
+                methods.append(method_info)
+            
+            # Extrai functions da classe
+            func_pattern = r'function\s+(\w+)\s*(?:\((.*?)\))?\s*:\s*(\w+)\s*;'
+            func_matches = re.finditer(func_pattern, class_body, re.IGNORECASE)
+            
+            for match in func_matches:
+                method_info = {
+                    'name': match.group(1),
+                    'parameters': self._parse_parameters(match.group(2) if match.group(2) else ''),
+                    'return_type': match.group(3),
+                    'type': 'function',
+                    'is_event_handler': match.group(1).lower().startswith('on')
+                }
+                methods.append(method_info)
+            
+            return methods
+            
+        except Exception as e:
+            logger.error(f"Erro ao extrair métodos da classe: {str(e)}")
+            return []
+    
+    def _extract_properties_from_class(self, class_body: str) -> List[Dict[str, Any]]:
+        """Extrai propriedades de uma classe"""
+        try:
+            properties = []
+            
+            # Padrão para capturar propriedades
+            prop_pattern = r'property\s+(\w+)\s*:\s*(\w+)(?:\s+read\s+(\w+))?(?:\s+write\s+(\w+))?'
+            matches = re.finditer(prop_pattern, class_body, re.IGNORECASE)
+            
+            for match in matches:
+                prop_info = {
+                    'name': match.group(1),
+                    'type': match.group(2),
+                    'read_accessor': match.group(3) if match.group(3) else '',
+                    'write_accessor': match.group(4) if match.group(4) else ''
+                }
+                properties.append(prop_info)
+            
+            return properties
+            
+        except Exception as e:
+            logger.error(f"Erro ao extrair propriedades da classe: {str(e)}")
+            return []
+    
+    def _parse_parameters(self, params_str: str) -> List[Dict[str, Any]]:
+        """Analisa string de parâmetros"""
+        try:
+            if not params_str or not params_str.strip():
+                return []
+            
+            parameters = []
+            
+            # Remove espaços e separa por ponto e vírgula
+            param_groups = params_str.split(';')
+            
+            for group in param_groups:
+                group = group.strip()
+                if not group:
+                    continue
+                
+                # Analisa cada grupo de parâmetros
+                if ':' in group:
+                    names_part, type_part = group.split(':', 1)
+                    param_type = type_part.strip()
+                    
+                    # Separa nomes de parâmetros
+                    param_names = [name.strip() for name in names_part.split(',')]
+                    
+                    for name in param_names:
+                        if name:
+                            param_info = {
+                                'name': name,
+                                'type': param_type,
+                                'is_var': name.lower().startswith('var '),
+                                'is_const': name.lower().startswith('const ')
+                            }
+                            parameters.append(param_info)
+            
+            return parameters
+            
+        except Exception as e:
+            logger.error(f"Erro ao analisar parâmetros: {str(e)}")
+            return []
+    
+    def _determine_visibility(self, content: str, position: int) -> str:
+        """Determina a visibilidade de um método baseado na seção"""
+        try:
+            # Encontra a seção anterior à posição
+            content_before = content[:position]
+            
+            # Procura por palavras-chave de visibilidade
+            if 'private' in content_before.lower().split()[-10:]:
+                return 'private'
+            elif 'protected' in content_before.lower().split()[-10:]:
+                return 'protected'
+            elif 'public' in content_before.lower().split()[-10:]:
+                return 'public'
+            elif 'published' in content_before.lower().split()[-10:]:
+                return 'published'
+            else:
+                return 'public'  # Default
+                
+        except Exception as e:
+            logger.error(f"Erro ao determinar visibilidade: {str(e)}")
+            return 'public'
+    
+    def _create_empty_analysis_result(self, project_name: str, project_path: str) -> Dict[str, Any]:
+        """Cria resultado vazio em caso de erro"""
+        return {
+            'metadata': {
+                'project_name': project_name,
+                'project_path': project_path,
+                'analysis_date': datetime.now().isoformat(),
+                'analyzer_version': self.version,
+                'analysis_type': 'empty_result',
+                'error': 'Falha na análise do projeto'
+            },
+            'files_analyzed': {
+                'total_files': 0,
+                'files': []
+            },
+            'code_structure': {
+                'functions': [],
+                'classes': [],
+                'forms': [],
+                'data_modules': [],
+                'units': []
+            },
+            'business_logic': {
+                'rules': [],
+                'patterns': [],
+                'workflows': []
+            },
+            'database_elements': {
+                'connections': [],
+                'queries': [],
+                'tables_referenced': []
+            },
+            'ui_components': {
+                'forms': [],
+                'controls': [],
+                'menus': []
+            },
+            'dependencies': {
+                'internal_units': [],
+                'external_libraries': [],
+                'system_units': []
+            },
+            'complexity_metrics': {
+                'total_lines': 0,
+                'function_count': 0,
+                'class_count': 0,
+                'estimated_complexity': 'indefinida'
+            },
+            'documentation_hints': {
+                'suggested_sections': [],
+                'key_components': [],
+                'main_functions': [],
+                'complexity_level': 'indefinida'
+            },
+            'modernization_suggestions': {
+                'priority_areas': [],
+                'technology_migration': [],
+                'architecture_improvements': []
+            }
+        }

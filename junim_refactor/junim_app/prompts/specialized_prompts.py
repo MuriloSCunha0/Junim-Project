@@ -281,6 +281,46 @@ Mapeie funcionalidades Delphi para Spring Boot:
         
         return self._enhance_prompt_for_model(base_prompt, 'functionality_mapping')
 
+    def get_diagram_prompt(self) -> str:
+        """Retorna o prompt especializado para geração de diagramas Mermaid simples"""
+        base_prompt = self._load_prompt_from_file('project_diagram_prompt.txt')
+        
+        if not base_prompt:
+            # Fallback para diagrama simplificado
+            base_prompt = """
+Crie um diagrama Mermaid SIMPLES que represente a arquitetura geral do projeto Delphi legado.
+
+FOQUE APENAS EM:
+- Principais módulos/formulários
+- Conexões essenciais entre componentes
+- Estrutura geral da aplicação
+
+EVITE:
+- Detalhes de funções individuais
+- Relacionamentos internos complexos
+- Excesso de informação
+
+FORMATO: Use flowchart TD (top-down) com no máximo 8-10 nós principais.
+"""
+        
+        return self._enhance_prompt_for_model(base_prompt, 'diagram_generation')
+
+    def get_code_modernization_prompt(self) -> str:
+        """Retorna o prompt especializado para modernização de código Delphi → Java Spring Boot"""
+        base_prompt = self._load_prompt_from_file('code_modernization_prompt.txt')
+        
+        if not base_prompt:
+            # Fallback se o arquivo não existir
+            base_prompt = """
+Gere código Java Spring Boot moderno baseado na documentação do projeto Delphi.
+Use APENAS os dados reais identificados na análise e documentação.
+Implemente Controllers, Services, Repositories e Entities.
+Siga as melhores práticas do Spring Boot 3.x.
+Mantenha correspondência clara entre componentes Delphi e Java.
+"""
+        
+        return self._enhance_prompt_for_model(base_prompt, 'code_modernization')
+
     # ============================================================================
     # COMPATIBILIDADE (aliases para manter código existente funcionando)
     # ============================================================================

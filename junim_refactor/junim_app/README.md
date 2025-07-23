@@ -8,28 +8,27 @@ JUNIM é uma aplicação web desenvolvida como parte de um TCC de Sistemas de In
 
 - **Interface Web Intuitiva**: Desenvolvida com Streamlit para facilidade de uso
 - **IA Generativa Avançada**: Utiliza Groq (cloud) e Ollama (local) para geração de código
-- **RAG (Retrieval-Augmented Generation)**: Base de conhecimento especializada em padrões Delphi → Java
-- **Pipeline Completo**: Desde análise do código Delphi até projeto Spring Boot funcional
-- **Validação Automática**: Scripts para verificar se o projeto gerado compila corretamente
+- **Análise Completa**: Extração de estrutura de código, documentação automática e comparação
+- **Modernização Funcional**: Geração de projeto Spring Boot completo com documentação
+- **Download ZIP**: Projeto Java completo com documentação comparativa
 
 ## 🏗️ Arquitetura
 
 ```
 junim_app/
-├── main.py                 # Aplicação Streamlit principal
+├── main.py                          # Aplicação Streamlit principal
 ├── ui/
-│   └── interface.py        # Interface do usuário
+│   └── interface.py                 # Interface do usuário
 ├── core/
-│   ├── pipeline.py         # Orquestrador principal
-│   ├── delphi_parser.py    # Analisador de código Delphi
-│   ├── rag_builder.py      # Construtor de contexto RAG
-│   ├── llm_service.py      # Serviço de IA (Groq/Ollama)
-│   └── java_builder.py     # Construtor de projetos Java
+│   ├── legacy_project_analyzer.py   # Analisador de código Delphi
+│   ├── documentation_generator.py   # Gerador de documentação
+│   ├── modernization_service.py     # Serviço de modernização
+│   └── llm_service.py              # Serviço de IA (Groq/Ollama)
 ├── utils/
-│   └── file_handler.py     # Manipulação de arquivos
-├── knowledge_base/
-│   └── delphi_to_spring_mappings.md  # Base de conhecimento
-└── requirements.txt        # Dependências Python
+│   └── file_handler.py             # Manipulação de arquivos
+├── prompts/
+│   └── specialized_prompts.py      # Prompts especializados
+└── requirements.txt                 # Dependências Python
 ```
 
 ## 🚀 Como Usar
@@ -41,13 +40,24 @@ junim_app/
 - (Opcional) Conta Groq com API key
 - (Opcional) Ollama instalado localmente
 
-### Instalação Rápida
+### Instalação e Execução
 
 1. **Clone ou baixe o projeto**
-2. **Execute o script de inicialização:**
 
-   **Windows:**
-   ```cmd
+2. **Instale as dependências:**
+   ```bash
+   pip install -r requirements.txt
+   ```
+
+3. **Execute a aplicação:**
+   ```bash
+   streamlit run main.py
+   ```
+
+4. **Acesse no navegador:**
+   ```
+   http://localhost:8501
+   ```
    run_junim.bat
    ```
 
